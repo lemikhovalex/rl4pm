@@ -8,14 +8,14 @@ class Agency:
     def __init__(self, input_size, hidden, n_lstm, te_intervals, ac_learning_rate,
                  te_learning_rate, n_classes, discount_factor):
         self.te_agent = AgentTeDiscrete(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
-                                        te_intervals=te_intervals)
+                                        te_intervals=te_intervals).float()
         self.ac_agent = AgentAct(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
-                                 out_shape=n_classes)
+                                 out_shape=n_classes).float()
         self.discount_factor = discount_factor
         self.te_agent_targ = AgentTeDiscrete(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
-                                             te_intervals=te_intervals)
+                                             te_intervals=te_intervals).float()
         self.ac_agent_targ = AgentAct(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
-                                      out_shape=n_classes)
+                                      out_shape=n_classes).float()
         self.refresh_target()
 
         self.te_opt = torch.optim.Adam(self.te_agent.parameters(), lr=ac_learning_rate)
@@ -33,7 +33,7 @@ class Agency:
         # play and record
         _ = env.reset()
         with torch.no_grad():
-            episode_reward, _ = play_and_record(self.te_agent, self.ac_agent, env, exp_replay)
+            episode_te_rew, episode_ac_rew = play_and_record(self.te_agent, self.ac_agent, env, exp_replay)
 
         # get data from memory
 
@@ -53,14 +53,18 @@ class Agency:
         ac_agent_loss.backward()
         self.ac_opt.step()
 
-        return episode_reward
+        return episode_te_rew, episode_ac_rew
 
     def get_loss_discrete_agent(self, states, actions, rewards,
                                 next_states, is_dones, agent):
         is_dones = is_dones.view(-1)
 
+        states = states.float()
+        actions = actions.long()
+        rewards = rewards.float()
+        next_states = next_states.float()
+
         qs, _ = agent(states)
-        print(f'Agency.get_loss_discrete_agent:: qs.requires_grad={qs.requires_grad}')
         predicted_q_values = torch.gather(input=qs, index=actions, dim=2)
 
         with torch.no_grad():
