@@ -39,7 +39,7 @@ def get_act_reward(true_act_oh, pred_act_oh):
 class PMEnv(gym.Env):
     def __init__(self, data: torch.tensor, intervals_te_rew, column_to_time_features, window_size):
         self.data = data
-        self.pred_counter = 1 + window_size
+        self.pred_counter = window_size
         self.trace_index = None
         self.intervals = intervals_te_rew
         self.column_feature = column_to_time_features
@@ -47,7 +47,7 @@ class PMEnv(gym.Env):
         self.given_state = None
 
     def reset(self, trace_n=None):
-        self.pred_counter = 1 + self.win
+        self.pred_counter = self.win
         out = self.data[:, :self.win]
         self.given_state = out
         self.trace_index = trace_n
@@ -57,9 +57,9 @@ class PMEnv(gym.Env):
         '''
         returns: next_s, (reward_te, reward_act), is_done, add_inf
         '''
-        te_rew = get_te_reward(true=self.data[:, self.pred_counter, self.column_feature['te']],
-                               pred=next_te, intervals=self.intervals)
-
+        true_te = self.data[:, self.pred_counter, self.column_feature['te']]
+        te_rew = get_te_reward(true=true_te, pred=next_te, intervals=self.intervals)
+        # (f'te_reward = \n{te_rew}')
         true_act_oh = self.data[:, self.pred_counter, len(self.column_feature):]
 
         # TODO here rises an error

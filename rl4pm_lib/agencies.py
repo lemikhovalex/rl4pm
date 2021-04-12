@@ -29,11 +29,18 @@ class Agency:
             target_param.data.copy_(polyak_avg * param + (1 - polyak_avg) * target_param)
 
     def train(self, env, exp_replay, batch_size):
-
+        self.te_agent.train()
+        self.ac_agent.train()
+        self.ac_agent_targ.train()
+        self.te_agent_targ.train()
         # play and record
         _ = env.reset()
+        episode_te_rew, episode_ac_rew = 0, 0
         with torch.no_grad():
-            episode_te_rew, episode_ac_rew = play_and_record(self.te_agent, self.ac_agent, env, exp_replay)
+            while len(exp_replay) < batch_size // 2:
+                _episode_te_rew, _episode_ac_rew, n = play_and_record(self.te_agent, self.ac_agent, env, exp_replay)
+                episode_te_rew += _episode_te_rew
+                episode_ac_rew += _episode_ac_rew
 
         # get data from memory
 
@@ -53,7 +60,7 @@ class Agency:
         ac_agent_loss.backward()
         self.ac_opt.step()
 
-        return episode_te_rew, episode_ac_rew
+        return episode_te_rew, episode_ac_rew, is_dones.logical_not().long().sum().item()
 
     def get_loss_discrete_agent(self, states, actions, rewards,
                                 next_states, is_dones, agent):

@@ -1,4 +1,5 @@
 import torch
+from torch.nn import functional as t_functional
 
 class NetAgent(torch.nn.Module):
     def __init__(self, input_size, hidden_layer, n_lstm, out_shape):
@@ -36,10 +37,17 @@ class AgentAct(torch.nn.Module):
         return act_idx, hidden
 
     def sample_action_from_q(self, q_values, stoch=False):
+
         if not stoch:
             act_idx = q_values.argmax(dim=2)
         else:
-            act_idx = q_values.argmax(dim=2)
+            _max = torch.max(q_values, dim=2, keepdim=True).values
+            _min = torch.min(q_values, dim=2, keepdim=True).values
+            _sc = _max - _min
+            q_values = q_values / _sc
+            dist = torch.distributions.Categorical(t_functional.softmax(q_values, dim=1))
+            act_idx = dist.sample()
+            # act_idx = q_values.argmax(dim=2)
         return act_idx
 
 

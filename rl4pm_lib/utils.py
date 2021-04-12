@@ -29,6 +29,7 @@ class ReplayMemory(object):
 
     def _encode_sample(self, idxes):
         obses_t, actions_te, actions_ac, rewards_te, rewards_ac, obses_tp1, dones = [], [], [], [], [], [], []
+        assert len(idxes) != 0
         for i in idxes:
             data = self._storage[i]
             # inp, next_te, next_ac, reward_te, reward_ac, n_inp, is_done
@@ -80,6 +81,8 @@ class ReplayMemory(object):
 
 
 def play_and_record(agent_te, agent_ac, env, exp_replay):
+    agent_te.eval()
+    agent_te.eval()
     inp = env.reset()
     n_traces = inp.shape[0]
     inp = inp.view(n_traces, 1, -1).float()
@@ -89,24 +92,44 @@ def play_and_record(agent_te, agent_ac, env, exp_replay):
     h_t = torch.zeros(1, n_traces, agent_te.hidden)
     c_t = torch.zeros(1, n_traces, agent_te.hidden)
 
-    episode_te_rew = 0
-    episode_ac_rew = 0
+    episode_te_rew = None
+    episode_ac_rew = None
+    n = 0
 
     while not is_done.all():
-        next_ac, (h_a, c_a) = agent_ac.sample_action(x=inp, hidden=(h_a, c_a))
-        next_te, (h_t, c_t) = agent_te.sample_action(x=inp, hidden=(h_t, c_t))
+        next_ac, (h_a, c_a) = agent_ac.sample_action(x=inp, hidden=(h_a, c_a), stoch=True)
+        next_te, (h_t, c_t) = agent_te.sample_action(x=inp, hidden=(h_t, c_t), stoch=True)
 
         n_inp, (reward_te, reward_ac), is_done, add_inf = env.step(agent_te.act_to_te(next_te), next_ac)
         n_inp = n_inp.view(n_traces, 1, -1).float()
         datum = (inp, next_te, next_ac, reward_te, reward_ac, n_inp, is_done)
 
-        episode_te_rew += reward_te
-        episode_ac_rew += reward_ac
+        if episode_te_rew is None:
+            episode_te_rew = reward_te
+        else:
+            episode_te_rew += reward_te
+        if episode_ac_rew is None:
+            episode_ac_rew = reward_ac
+        else:
+            episode_ac_rew += reward_ac
+        try:
+            n += is_done.sum().item()
+        except AttributeError:
+            n += is_done
 
         exp_replay.push(datum)
-
         inp = n_inp
-    return episode_te_rew, episode_ac_rew
+
+    try:
+        episode_te_rew = episode_te_rew.sum().item()
+    except AttributeError:
+        pass
+    try:
+        episode_ac_rew = episode_ac_rew.sum().item()
+    except AttributeError:
+        pass
+
+    return episode_te_rew, episode_ac_rew, n
 
 
 def fill_trace(trace_np_matrix, max_len):
@@ -121,3 +144,22 @@ def extract_trace_features(df, trace_id, max_len):
     trace_vals = fill_trace(trace_vals, max_len)
     trace_vals = torch.as_tensor(trace_vals).unsqueeze(0)
     return trace_vals
+
+
+def get_traces_matrix(df, env_trace_ids):
+    env_matrix = None
+    max_len = 0
+    for t_id in env_trace_ids:
+        trace_len = df[df['trace_id'] == t_id].shape[0]
+        if max_len < trace_len:
+            max_len = trace_len
+
+    for _i, t_id in enumerate(env_trace_ids):
+        if env_matrix is not None:
+
+            trace_vals = extract_trace_features(df, t_id, max_len)
+            env_matrix = torch.cat([env_matrix, trace_vals])
+        else:
+            env_matrix = extract_trace_features(df, t_id, max_len)
+
+    return env_matrix
