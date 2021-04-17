@@ -62,7 +62,6 @@ class PMEnv(gym.Env):
         # (f'te_reward = \n{te_rew}')
         true_act_oh = self.data[:, self.pred_counter, len(self.column_feature):]
 
-        # TODO here rises an error
         pred_act_oh = torch.zeros(self.data.shape[0], self.data.shape[-1] - len(self.column_feature), dtype=int)
         pred_act_oh[range(pred_act_oh.shape[0]), next_act.long()] = 1
 

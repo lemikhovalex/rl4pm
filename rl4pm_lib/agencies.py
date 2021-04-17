@@ -31,24 +31,13 @@ class Agency:
         for target_param, param in zip(self.ac_agent_targ.parameters(), self.ac_agent.parameters()):
             target_param.data.copy_(polyak_avg * param + (1 - polyak_avg) * target_param)
 
-    def train(self, env, exp_replay, batch_size):
+    def train(self, exp_replay, batch_size):
         self.te_agent.train()
         self.ac_agent.train()
         self.ac_agent_targ.train()
         self.te_agent_targ.train()
-        # play and record
-        _ = env.reset()
-        episode_te_rew, episode_ac_rew = 0, 0
-        with torch.no_grad():
-            while len(exp_replay) < batch_size // 2:
-                _episode_te_rew, _episode_ac_rew, n = play_and_record(self.te_agent, self.ac_agent, env, exp_replay)
-                episode_te_rew += _episode_te_rew
-                episode_ac_rew += _episode_ac_rew
-
-        # get data from memory
-
         # train
-        upd_size = batch_size if len(exp_replay) > batch_size else len(exp_replay) // 2
+        upd_size = batch_size if len(exp_replay) > batch_size else int(len(exp_replay) * 0.8)
         states, actions_te, actions_ac, rewards_te, rewards_ac, next_states, is_dones = exp_replay.sample(upd_size)
 
         te_agent_loss, ac_agent_loss = self.get_losses(states, actions_te, actions_ac, rewards_te, rewards_ac,
@@ -63,7 +52,7 @@ class Agency:
         ac_agent_loss.backward()
         self.ac_opt.step()
 
-        return episode_te_rew, episode_ac_rew, is_dones.logical_not().long().sum().item()
+        return te_agent_loss.item(), ac_agent_loss.item()
 
     def get_loss_discrete_agent(self, obs_t, h_t, c_t, actions, rewards,
                                 obs_tp1, h_tp1, c_tp1, is_dones, agent):
@@ -91,7 +80,7 @@ class Agency:
         q_reference = q_reference.view(-1, 1)[is_dones.logical_not()]
         predicted_q_values = predicted_q_values.view(-1, 1)[is_dones.logical_not()]
 
-        # # mean squared error loss to minimize
+        # mean squared error loss to minimize
         loss = t_functional.smooth_l1_loss(predicted_q_values, q_reference).mean()
 
         return loss

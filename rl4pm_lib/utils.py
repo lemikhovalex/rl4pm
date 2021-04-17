@@ -34,7 +34,7 @@ def play_and_record(agent_te, agent_ac, env, exp_replay):
                              h_te=h_t, c_te=c_t)
 
         datum = Datum(obs_t=state_t, action_te=next_te, action_ac=next_ac, reward_ac=reward_ac, reward_te=reward_te,
-                      obs_t1=state_t_next, dones=is_done)
+                      obs_tp1=state_t_next, dones=is_done)
         if episode_te_rew is None:
             episode_te_rew = reward_te
         else:
@@ -44,9 +44,9 @@ def play_and_record(agent_te, agent_ac, env, exp_replay):
         else:
             episode_ac_rew += reward_ac
         try:
-            n += is_done.sum().item()
+            n += is_done.logical_not().sum().item()
         except AttributeError:
-            n += is_done
+            n += 1 - is_done
 
         exp_replay.push(datum)
         inp = n_inp
