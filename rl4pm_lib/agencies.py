@@ -7,6 +7,9 @@ from torch.nn import functional as t_functional
 class Agency:
     def __init__(self, input_size, hidden, n_lstm, te_intervals, ac_learning_rate,
                  te_learning_rate, n_classes, discount_factor):
+        self.hidden_size = hidden
+        self.input_size = input_size
+        self.n_lstm = n_lstm
         self.te_agent = AgentTeDiscrete(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
                                         te_intervals=te_intervals).float()
         self.ac_agent = AgentAct(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
@@ -62,20 +65,25 @@ class Agency:
 
         return episode_te_rew, episode_ac_rew, is_dones.logical_not().long().sum().item()
 
-    def get_loss_discrete_agent(self, states, actions, rewards,
-                                next_states, is_dones, agent):
-        is_dones = is_dones.view(-1)
+    def get_loss_discrete_agent(self, obs_t, h_t, c_t, actions, rewards,
+                                obs_tp1, h_tp1, c_tp1, is_dones, agent):
 
-        states = states.float()
-        actions = actions.long()
-        rewards = rewards.float()
-        next_states = next_states.float()
+        n_trails = obs_t.shape[1]
+        max_len = obs_t.shape[0]
+        obs_t = obs_t.view(-1, 1, self.input_size)
+        h_t = h_t.view(agent.n_lstm, -1, self.hidden_size)
+        c_t = c_t.view(agent.n_lstm, -1, self.hidden_size)
 
-        qs, _ = agent(states)
+        qs, _ = agent(x=obs_t, hidden=(h_t, c_t))
+        qs = qs.view(max_len, n_trails, -1)
         predicted_q_values = torch.gather(input=qs, index=actions, dim=2)
 
         with torch.no_grad():
-            qs_next, _ = agent(next_states)
+            obs_tp1 = obs_tp1.view(-1, 1, self.input_size)
+            h_tp1 = h_tp1.view(agent.n_lstm, -1, self.hidden_size)
+            c_tp1 = c_tp1.view(agent.n_lstm, -1, self.hidden_size)
+            qs_next, _ = agent(x=obs_tp1, hidden=(h_tp1, c_tp1))
+            qs_next = qs_next.view(max_len, n_trails, -1)
             actions_idx_next = agent.sample_action_from_q(qs_next, stoch=True)
         predicted_next_q_values = torch.gather(input=qs_next, index=actions_idx_next.unsqueeze(2), dim=2)
 
@@ -90,9 +98,30 @@ class Agency:
 
     def get_losses(self, states, actions_te, actions_ac, rewards_te, rewards_ac,
                    next_states, is_dones):
-        te_agent_loss = self.get_loss_discrete_agent(states, actions_te, rewards_te,
-                                                     next_states, is_dones, agent=self.te_agent)
+        is_dones = is_dones.view(-1)
 
-        ac_agent_loss = self.get_loss_discrete_agent(states, actions_ac, rewards_ac,
-                                                     next_states, is_dones, agent=self.ac_agent)
+        obs_t = states['s'].float()
+        obs_t_h_te = states['h_te']
+        obs_t_h_ac = states['h_ac']
+        obs_t_c_te = states['c_te']
+        obs_t_c_ac = states['c_ac']
+        actions_te = actions_te.long()
+        actions_ac = actions_ac.long()
+        rewards_te = rewards_te.float()
+        rewards_ac = rewards_ac.float()
+
+        obs_tp1 = next_states['s'].float()
+        obs_tp1_h_te = next_states['h_te']
+        obs_tp1_h_ac = next_states['h_ac']
+        obs_tp1_c_te = next_states['c_te']
+        obs_tp1_c_ac = next_states['c_ac']
+        te_agent_loss = self.get_loss_discrete_agent(obs_t=obs_t, h_t=obs_t_h_te, c_t=obs_t_c_te,
+                                                     actions=actions_te, rewards=rewards_te, is_dones=is_dones,
+                                                     obs_tp1=obs_tp1, h_tp1=obs_tp1_h_te, c_tp1=obs_tp1_c_te,
+                                                     agent=self.te_agent)
+
+        ac_agent_loss = self.get_loss_discrete_agent(obs_t=obs_t, h_t=obs_t_h_ac, c_t=obs_t_c_ac,
+                                                     actions=actions_ac, rewards=rewards_ac, is_dones=is_dones,
+                                                     obs_tp1=obs_tp1, h_tp1=obs_tp1_h_ac, c_tp1=obs_tp1_c_ac,
+                                                     agent=self.ac_agent)
         return te_agent_loss, ac_agent_loss

@@ -1,6 +1,7 @@
 import torch
 from torch.nn import functional as t_functional
 
+
 class NetAgent(torch.nn.Module):
     def __init__(self, input_size, hidden_layer, n_lstm, out_shape):
         super(NetAgent, self).__init__()
@@ -9,23 +10,24 @@ class NetAgent(torch.nn.Module):
         self.fc = torch.nn.Linear(hidden_layer, out_shape)
 
     def forward(self, x, h):
-        x, (h, c) = self.lstm(x, (h[0], h[1]))
+        x, h = self.lstm(x, h)
         x = self.relu(x)
         x = self.fc(x)
-        return x, (h, c)
+        return x, h
 
 
 class AgentAct(torch.nn.Module):
     def __init__(self, input_size, hidden_layer, n_lstm, out_shape):
         super(AgentAct, self).__init__()
+        self.n_lstm = n_lstm
         self.net = NetAgent(input_size, hidden_layer, n_lstm, out_shape)
         self.target_net = NetAgent(input_size, hidden_layer, n_lstm, out_shape)
         self.hidden = hidden_layer
 
     def forward(self, x, hidden=None):
         if hidden is None:
-            h_te = torch.zeros((1, x.shape[0], self.hidden), requires_grad=True)
-            c_te = torch.zeros((1, x.shape[0], self.hidden), requires_grad=True)
+            h_te = torch.zeros((self.n_lstm, x.shape[0], self.hidden), requires_grad=True)
+            c_te = torch.zeros((self.n_lstm, x.shape[0], self.hidden), requires_grad=True)
             hidden = (h_te, c_te)
         return self.net(x, hidden)
 
@@ -54,6 +56,7 @@ class AgentAct(torch.nn.Module):
 class AgentTeDiscrete(torch.nn.Module):
     def __init__(self, input_size, hidden_layer, n_lstm, te_intervals):
         super(AgentTeDiscrete, self).__init__()
+        self.n_lstm = n_lstm
         self.net = NetAgent(input_size, hidden_layer, n_lstm, len(te_intervals))
         self.target_net = NetAgent(input_size, hidden_layer, n_lstm, len(te_intervals))
         self.te_intervals = te_intervals
@@ -61,8 +64,8 @@ class AgentTeDiscrete(torch.nn.Module):
 
     def forward(self, x, hidden=None):
         if hidden is None:
-            h_te = torch.zeros((1, x.shape[0], self.hidden), requires_grad=True)
-            c_te = torch.zeros((1, x.shape[0], self.hidden), requires_grad=True)
+            h_te = torch.zeros((self.n_lstm, x.shape[0], self.hidden), requires_grad=True)
+            c_te = torch.zeros((self.n_lstm, x.shape[0], self.hidden), requires_grad=True)
             hidden = (h_te, c_te)
         return self.net(x, hidden)
 
