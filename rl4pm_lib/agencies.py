@@ -65,7 +65,7 @@ class Agency:
 
         qs, _ = agent(x=obs_t, hidden=(h_t, c_t))
         qs = qs.view(max_len, n_trails, -1)
-        predicted_q_values = torch.gather(input=qs, index=actions, dim=2)
+        predicted_q_values = torch.gather(input=qs, index=actions.unsqueeze(2), dim=2).view(-1)
 
         with torch.no_grad():
             obs_tp1 = obs_tp1.view(-1, 1, self.input_size)
@@ -74,11 +74,8 @@ class Agency:
             qs_next, _ = agent(x=obs_tp1, hidden=(h_tp1, c_tp1))
             qs_next = qs_next.view(max_len, n_trails, -1)
             actions_idx_next = agent.sample_action_from_q(qs_next, stoch=True)
-        predicted_next_q_values = torch.gather(input=qs_next, index=actions_idx_next.unsqueeze(2), dim=2)
-
+        predicted_next_q_values = torch.gather(input=qs_next, index=actions_idx_next.unsqueeze(2), dim=2).view(-1)
         q_reference = rewards + self.discount_factor * predicted_next_q_values
-        q_reference = q_reference.view(-1, 1)[is_dones.logical_not()]
-        predicted_q_values = predicted_q_values.view(-1, 1)[is_dones.logical_not()]
 
         # mean squared error loss to minimize
         loss = t_functional.smooth_l1_loss(predicted_q_values, q_reference).mean()
@@ -89,21 +86,27 @@ class Agency:
                    next_states, is_dones):
         is_dones = is_dones.view(-1)
 
-        obs_t = states['s'].float()
-        obs_t_h_te = states['h_te']
-        obs_t_h_ac = states['h_ac']
-        obs_t_c_te = states['c_te']
-        obs_t_c_ac = states['c_ac']
-        actions_te = actions_te.long()
-        actions_ac = actions_ac.long()
-        rewards_te = rewards_te.float()
-        rewards_ac = rewards_ac.float()
+        n_features = states['s'].shape[-1]
+        hidden_te = states['h_te'].shape[-1]
+        hidden_ac = states['h_ac'].shape[-1]
 
-        obs_tp1 = next_states['s'].float()
-        obs_tp1_h_te = next_states['h_te']
-        obs_tp1_h_ac = next_states['h_ac']
-        obs_tp1_c_te = next_states['c_te']
-        obs_tp1_c_ac = next_states['c_ac']
+        obs_t = states['s'].float().view(-1, 1, n_features)[is_dones.logical_not()]
+        obs_tp1 = next_states['s'].float().view(-1, 1, n_features)[is_dones.logical_not()]
+
+        obs_t_h_te = states['h_te'].view(-1, 1, hidden_te)[is_dones.logical_not()]
+        obs_t_c_te = states['c_te'].view(-1, 1, hidden_te)[is_dones.logical_not()]
+        obs_tp1_h_te = next_states['h_te'].view(-1, 1, hidden_te)[is_dones.logical_not()]
+        obs_tp1_c_te = next_states['c_te'].view(-1, 1, hidden_te)[is_dones.logical_not()]
+
+        obs_t_h_ac = states['h_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()]
+        obs_t_c_ac = states['c_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()]
+        obs_tp1_h_ac = next_states['h_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()]
+        obs_tp1_c_ac = next_states['c_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()]
+        actions_te = actions_te.long().view(-1)[is_dones.logical_not()].unsqueeze(1)
+        actions_ac = actions_ac.long().view(-1)[is_dones.logical_not()].unsqueeze(1)
+        rewards_te = rewards_te.float().view(-1)[is_dones.logical_not()]
+        rewards_ac = rewards_ac.float().view(-1)[is_dones.logical_not()]
+
         te_agent_loss = self.get_loss_discrete_agent(obs_t=obs_t, h_t=obs_t_h_te, c_t=obs_t_c_te,
                                                      actions=actions_te, rewards=rewards_te, is_dones=is_dones,
                                                      obs_tp1=obs_tp1, h_tp1=obs_tp1_h_te, c_tp1=obs_tp1_c_te,

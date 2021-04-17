@@ -77,23 +77,11 @@ def _replay_buff_view_state(x, le, n_trails):
 
 
 def _replay_buff_view(x, le, n_trails):
-    return torch.tensor(x).view((le, n_trails, -1))
-
-
-def filter_datum(datum: Datum):
-    datum.filter()
-    obs_t, act_te, act_ac, rew_te, rew_ac, obs_tp1, done = datum
-    out = []
-    for i in range(len(obs_t)):
-        out.append(Datum(obs_t=obs_t[i], obs_tp1=obs_tp1[i],
-                         action_te=act_te[i], action_ac=act_ac[i],
-                         reward_te=rew_te[i], reward_ac=rew_ac[i], dones=done[i])
-                   )
-    return out
+    return torch.cat(x).view((le, n_trails, -1))
 
 
 class ReplayMemory(object):
-    def __init__(self, size):
+    def __init__(self, size, traces=64):
         """Create Replay buffer.
         Parameters
         ----------
@@ -101,12 +89,10 @@ class ReplayMemory(object):
             Max number of transitions to store in the buffer. When the buffer
             overflows the old memories are dropped.
         """
+        self.traces = traces
         self._storage = []
         self._maxsize = size
         self._next_idx = 0
-
-    def __len__(self):
-        return len(self._storage)
 
     def _push(self, datum: Datum):
         if self._next_idx >= len(self._storage):
@@ -116,9 +102,7 @@ class ReplayMemory(object):
         self._next_idx = (self._next_idx + 1) % self._maxsize
 
     def push(self, datum: Datum):
-        list_datum = filter_datum(datum)
-        for d in list_datum:
-            self._push(d)
+        self._push(datum)
 
     def _encode_sample(self, idxes):
         actions_te, actions_ac, rewards_te, rewards_ac, dones = [], [], [], [], []
@@ -150,24 +134,24 @@ class ReplayMemory(object):
             obses_tp1_h_te.append(obs_tp1.h_te)
             obses_tp1_c_ac.append(obs_tp1.c_ac)
             obses_tp1_c_te.append(obs_tp1.c_te)
-        obses_tp1 = {'s': _replay_buff_view_state(obses_tp1_s, le, 1),
-                     'h_te': _replay_buff_view_state(obses_tp1_h_te, le, 1),
-                     'c_te': _replay_buff_view_state(obses_tp1_h_te, le, 1),
-                     'h_ac': _replay_buff_view_state(obses_tp1_h_ac, le, 1),
-                     'c_ac': _replay_buff_view_state(obses_tp1_h_ac, le, 1),
+        obses_tp1 = {'s': _replay_buff_view_state(obses_tp1_s, le, self.traces),
+                     'h_te': _replay_buff_view_state(obses_tp1_h_te, le, self.traces),
+                     'c_te': _replay_buff_view_state(obses_tp1_h_te, le, self.traces),
+                     'h_ac': _replay_buff_view_state(obses_tp1_h_ac, le, self.traces),
+                     'c_ac': _replay_buff_view_state(obses_tp1_h_ac, le, self.traces),
                      }
-        obses_t = {'s': _replay_buff_view_state(obses_t_s, le, 1),
-                   'h_te': _replay_buff_view_state(obses_t_h_te, le, 1),
-                   'c_te': _replay_buff_view_state(obses_t_h_te, le, 1),
-                   'h_ac': _replay_buff_view_state(obses_t_h_ac, le, 1),
-                   'c_ac': _replay_buff_view_state(obses_t_h_ac, le, 1),
+        obses_t = {'s': _replay_buff_view_state(obses_t_s, le, self.traces),
+                   'h_te': _replay_buff_view_state(obses_t_h_te, le, self.traces),
+                   'c_te': _replay_buff_view_state(obses_t_h_te, le, self.traces),
+                   'h_ac': _replay_buff_view_state(obses_t_h_ac, le, self.traces),
+                   'c_ac': _replay_buff_view_state(obses_t_h_ac, le, self.traces),
                    }
 
-        actions_te = _replay_buff_view(actions_te, le, 1)
-        actions_ac = _replay_buff_view(actions_ac, le, 1)
-        rewards_te = _replay_buff_view(rewards_te, le, 1)
-        rewards_ac = _replay_buff_view(rewards_ac, le, 1)
-        dones = _replay_buff_view(dones, le, 1)
+        actions_te = _replay_buff_view(actions_te, le, self.traces)
+        actions_ac = _replay_buff_view(actions_ac, le, self.traces)
+        rewards_te = _replay_buff_view(rewards_te, le, self.traces)
+        rewards_ac = _replay_buff_view(rewards_ac, le, self.traces)
+        dones = _replay_buff_view(dones, le, self.traces)
 
         #     inp,     next_te,    next_ac,    reward_te,  reward_ac,  n_inp,     is_done
         out = obses_t, actions_te, actions_ac, rewards_te, rewards_ac, obses_tp1, dones
@@ -196,4 +180,6 @@ class ReplayMemory(object):
         idxes = [random.randint(0, len(self._storage) - 1) for _ in range(batch_size)]
         return self._encode_sample(idxes)
 
+    def __len__(self):
+        return len(self._storage)
 

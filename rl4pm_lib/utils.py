@@ -21,7 +21,8 @@ def play_and_record(agent_te, agent_ac, env, exp_replay):
 
     while not is_done.all():
 
-        state_t = State(state=inp, h_ac=h_a, c_ac=c_a,
+        state_t = State(state=inp,
+                        h_ac=h_a, c_ac=c_a,
                         h_te=h_t, c_te=c_t)
         next_ac, (h_a, c_a) = agent_ac.sample_action(x=inp, hidden=(h_a, c_a), stoch=True)
 
@@ -30,7 +31,8 @@ def play_and_record(agent_te, agent_ac, env, exp_replay):
         n_inp, (reward_te, reward_ac), is_done, add_inf = env.step(agent_te.act_to_te(next_te), next_ac)
         n_inp = n_inp.view(n_traces, 1, -1).float()
 
-        state_t_next = State(state=n_inp, h_ac=h_a, c_ac=c_a,
+        state_t_next = State(state=n_inp,
+                             h_ac=h_a, c_ac=c_a,
                              h_te=h_t, c_te=c_t)
 
         datum = Datum(obs_t=state_t, action_te=next_te, action_ac=next_ac, reward_ac=reward_ac, reward_te=reward_te,
@@ -70,27 +72,35 @@ def fill_trace(trace_np_matrix, max_len):
 
 
 def extract_trace_features(df, trace_id, max_len):
-    df_id = df[df['trace_id'] == trace_id].drop(columns=['timestamp', 'trace_id', 'activity'])
-    trace_vals = df_id.values
-    trace_vals = fill_trace(trace_vals, max_len)
-    trace_vals = torch.as_tensor(trace_vals).unsqueeze(0)
+    if trace_id is not None:
+        df_id = df[df['trace_id'] == trace_id].drop(columns=['timestamp', 'trace_id', 'activity'])
+        trace_vals = df_id.values
+        trace_vals = fill_trace(trace_vals, max_len)
+        trace_vals = torch.as_tensor(trace_vals).unsqueeze(0)
+    else:
+        trace_vals = torch.zeros(1, max_len, df.shape[1] - 3)
     return trace_vals
+
+
+def extend_env_matrix(env_matrix, df, t_id, max_len):
+    if env_matrix is not None:
+        trace_vals = extract_trace_features(df, t_id, max_len)
+        env_matrix = torch.cat([env_matrix, trace_vals])
+    else:
+        env_matrix = extract_trace_features(df, t_id, max_len)
+    return env_matrix
 
 
 def get_traces_matrix(df, env_trace_ids):
     env_matrix = None
     max_len = 0
     for t_id in env_trace_ids:
-        trace_len = df[df['trace_id'] == t_id].shape[0]
-        if max_len < trace_len:
-            max_len = trace_len
+        if t_id is not None:
+            trace_len = df[df['trace_id'] == t_id].shape[0]
+            if max_len < trace_len:
+                max_len = trace_len
 
     for _i, t_id in enumerate(env_trace_ids):
-        if env_matrix is not None:
-
-            trace_vals = extract_trace_features(df, t_id, max_len)
-            env_matrix = torch.cat([env_matrix, trace_vals])
-        else:
-            env_matrix = extract_trace_features(df, t_id, max_len)
+        env_matrix = extend_env_matrix(env_matrix, df, t_id, max_len)
 
     return env_matrix
