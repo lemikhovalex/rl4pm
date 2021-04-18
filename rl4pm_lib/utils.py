@@ -5,7 +5,7 @@ from .replay_buffer import State, Datum
 
 def play_and_record(agent_te, agent_ac, env, exp_replay,
                     process_dvice=None,
-                    dest_device=torch.device('cpu')):
+                    dest_device=torch.device('cpu'), stoch=True):
     if process_dvice is None:
         process_dvice = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     agent_te.eval()
@@ -33,9 +33,9 @@ def play_and_record(agent_te, agent_ac, env, exp_replay,
         state_t = State(state=inp,
                         h_ac=h_a, c_ac=c_a,
                         h_te=h_t, c_te=c_t)
-        next_ac, (h_a, c_a) = agent_ac.sample_action(x=inp, hidden=(h_a, c_a), stoch=True)
+        next_ac, (h_a, c_a) = agent_ac.sample_action(x=inp, hidden=(h_a, c_a), stoch=stoch)
 
-        next_te, (h_t, c_t) = agent_te.sample_action(x=inp, hidden=(h_t, c_t), stoch=True)
+        next_te, (h_t, c_t) = agent_te.sample_action(x=inp, hidden=(h_t, c_t), stoch=stoch)
 
         # print('utils.play_and_record::')
         # print(f'\tprocess_device={process_dvice}')
