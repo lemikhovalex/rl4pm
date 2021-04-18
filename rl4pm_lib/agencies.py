@@ -1,6 +1,6 @@
 import torch
 from .agents import AgentAct, AgentTeDiscrete
-from .utils import play_and_record
+from .utils import init_weights
 from torch.nn import functional as t_functional
 
 
@@ -15,6 +15,10 @@ class Agency:
         self.te_agent = AgentTeDiscrete(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
                                         te_intervals=te_intervals).float()
         self.discount_factor = discount_factor
+
+        self.te_agent.apply(init_weights)
+        self.ac_agent.apply(init_weights)
+
         self.te_agent_targ = AgentTeDiscrete(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
                                              te_intervals=te_intervals).float()
         self.ac_agent_targ = AgentAct(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
@@ -84,28 +88,30 @@ class Agency:
 
     def get_losses(self, states, actions_te, actions_ac, rewards_te, rewards_ac,
                    next_states, is_dones):
-        is_dones = is_dones.view(-1)
 
         n_features = states['s'].shape[-1]
         hidden_te = states['h_te'].shape[-1]
         hidden_ac = states['h_ac'].shape[-1]
+        loc_device = next(self.te_agent.parameters()).device
 
-        obs_t = states['s'].float().view(-1, 1, n_features)[is_dones.logical_not()]
-        obs_tp1 = next_states['s'].float().view(-1, 1, n_features)[is_dones.logical_not()]
+        is_dones = is_dones.view(-1).to(loc_device)
 
-        obs_t_h_te = states['h_te'].view(-1, 1, hidden_te)[is_dones.logical_not()]
-        obs_t_c_te = states['c_te'].view(-1, 1, hidden_te)[is_dones.logical_not()]
-        obs_tp1_h_te = next_states['h_te'].view(-1, 1, hidden_te)[is_dones.logical_not()]
-        obs_tp1_c_te = next_states['c_te'].view(-1, 1, hidden_te)[is_dones.logical_not()]
+        obs_t = states['s'].float().view(-1, 1, n_features)[is_dones.logical_not()].to(loc_device)
+        obs_tp1 = next_states['s'].float().view(-1, 1, n_features)[is_dones.logical_not()].to(loc_device)
 
-        obs_t_h_ac = states['h_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()]
-        obs_t_c_ac = states['c_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()]
-        obs_tp1_h_ac = next_states['h_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()]
-        obs_tp1_c_ac = next_states['c_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()]
-        actions_te = actions_te.long().view(-1)[is_dones.logical_not()].unsqueeze(1)
-        actions_ac = actions_ac.long().view(-1)[is_dones.logical_not()].unsqueeze(1)
-        rewards_te = rewards_te.float().view(-1)[is_dones.logical_not()]
-        rewards_ac = rewards_ac.float().view(-1)[is_dones.logical_not()]
+        obs_t_h_te = states['h_te'].view(-1, 1, hidden_te)[is_dones.logical_not()].to(loc_device)
+        obs_t_c_te = states['c_te'].view(-1, 1, hidden_te)[is_dones.logical_not()].to(loc_device)
+        obs_tp1_h_te = next_states['h_te'].view(-1, 1, hidden_te)[is_dones.logical_not()].to(loc_device)
+        obs_tp1_c_te = next_states['c_te'].view(-1, 1, hidden_te)[is_dones.logical_not()].to(loc_device)
+
+        obs_t_h_ac = states['h_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()].to(loc_device)
+        obs_t_c_ac = states['c_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()].to(loc_device)
+        obs_tp1_h_ac = next_states['h_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()].to(loc_device)
+        obs_tp1_c_ac = next_states['c_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()].to(loc_device)
+        actions_te = actions_te.long().view(-1)[is_dones.logical_not()].unsqueeze(1).to(loc_device)
+        actions_ac = actions_ac.long().view(-1)[is_dones.logical_not()].unsqueeze(1).to(loc_device)
+        rewards_te = rewards_te.float().view(-1)[is_dones.logical_not()].to(loc_device)
+        rewards_ac = rewards_ac.float().view(-1)[is_dones.logical_not()].to(loc_device)
 
         te_agent_loss = self.get_loss_discrete_agent(obs_t=obs_t, h_t=obs_t_h_te, c_t=obs_t_c_te,
                                                      actions=actions_te, rewards=rewards_te, is_dones=is_dones,
@@ -117,3 +123,9 @@ class Agency:
                                                      obs_tp1=obs_tp1, h_tp1=obs_tp1_h_ac, c_tp1=obs_tp1_c_ac,
                                                      agent=self.ac_agent)
         return te_agent_loss, ac_agent_loss
+
+    def to(self, device):
+        self.ac_agent.to(device)
+        self.te_agent.to(device)
+        self.ac_agent_targ.to(device)
+        self.te_agent_targ.to(device)
