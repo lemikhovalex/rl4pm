@@ -40,15 +40,16 @@ class AgentAct(torch.nn.Module):
 
     def sample_action_from_q(self, q_values, stoch=False):
 
-        if not stoch:
-            act_idx = q_values.argmax(dim=2)
-        else:
+        if stoch:
             _max = torch.max(q_values, dim=2, keepdim=True).values
             _min = torch.min(q_values, dim=2, keepdim=True).values
             _sc = _max - _min
             q_values = q_values / _sc
             dist = torch.distributions.Categorical(t_functional.softmax(q_values, dim=1))
             act_idx = dist.sample()
+
+        else:
+            act_idx = q_values.argmax(dim=2)
             # act_idx = q_values.argmax(dim=2)
         return act_idx
 
@@ -78,14 +79,20 @@ class AgentTeDiscrete(torch.nn.Module):
 
     def sample_action_from_q(self, q_values, stoch=False):
         # print(f'AgentTeDiscrete.sample_action_from_q:: q_values.shape={q_values.shape}')
-        if not stoch:
-            t_idx = q_values.argmax(dim=2)
+        if stoch:
+            _max = torch.max(q_values, dim=2, keepdim=True).values
+            _min = torch.min(q_values, dim=2, keepdim=True).values
+            _sc = _max - _min
+            q_values = q_values / _sc
+            dist = torch.distributions.Categorical(t_functional.softmax(q_values, dim=1))
+            t_idx = dist.sample()
         else:
             t_idx = q_values.argmax(dim=2)
         return t_idx
 
     def act_to_te(self, t_idx):
-        out = torch.zeros(t_idx.shape)
+        device = next(self.parameters()).device
+        out = torch.zeros(t_idx.shape, device=device)
         for i in range(out.shape[0]):
             out[i] = (self.te_intervals[t_idx[i]][0] + self.te_intervals[t_idx[i]][1]) / 2.
         return out
