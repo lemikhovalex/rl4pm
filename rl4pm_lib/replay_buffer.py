@@ -37,6 +37,13 @@ class State:
                      h_ac=self.h_ac[item].unsqueeze(0), h_te=self.h_te[item].unsqueeze(0),
                      c_te=self.c_te[item].unsqueeze(0), c_ac=self.c_te[item].unsqueeze(0))
 
+    def to(self, device):
+        self.state = self.state.to(device=device)
+        self.h_ac = self.h_ac.to(device=device)
+        self.c_ac = self.c_ac.to(device=device)
+        self.h_te = self.h_te.to(device=device)
+        self.c_te = self.c_te.to(device=device)
+
 
 class Datum(object):
     def __init__(self, obs_t: State,
@@ -70,6 +77,15 @@ class Datum(object):
         self.obs_t.filter(self.dones)
         self.obs_tp1.filter(self.dones)
         self.dones = self.dones[self.dones.logical_not()]
+
+    def to(self, device):
+        self.obs_t.to(device=device)
+        self.action_te.to(device=device)
+        self.action_ac.to(device=device)
+        self.reward_te.to(device=device)
+        self.reward_ac.to(device=device)
+        self.obs_tp1.to(device=device)
+        self.dones.to(device=device)
 
 
 def _replay_buff_view_state(x, le, n_trails):

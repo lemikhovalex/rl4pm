@@ -2,9 +2,9 @@ import torch
 import gym
 
 
-def get_next_input(prev_inp, next_act, next_te, column_feature):
+def get_next_input(prev_inp, next_act, next_te, column_feature, device):
     out = prev_inp[:, 1:]
-    next_event = torch.zeros(prev_inp.shape[0], prev_inp.shape[2])
+    next_event = torch.zeros(prev_inp.shape[0], prev_inp.shape[2], device=device)
     next_event[:, column_feature['te']] = next_te
     last_event = prev_inp[:, -1].squeeze(1)
 
@@ -12,7 +12,7 @@ def get_next_input(prev_inp, next_act, next_te, column_feature):
 
     next_event[:, column_feature['tw']] = (last_event[:, column_feature['tw']] + next_te) % (7 * 24 * 60 * 60)
     # one hot transformation from https://discuss.pytorch.org/t/convert-int-into-one-hot-format/507/5
-    act_onehot = torch.FloatTensor(out.shape[0], out.shape[2] - len(column_feature))
+    act_onehot = torch.FloatTensor(out.shape[0], out.shape[2] - len(column_feature), device=device)
     act_onehot.zero_()
     act_onehot.scatter_(1, next_act.long().view(-1, 1), 1)
     next_event[:, len(column_feature):] = act_onehot
@@ -37,8 +37,12 @@ def get_act_reward(true_act_oh, pred_act_oh):
 
 
 class PMEnv(gym.Env):
-    def __init__(self, data: torch.tensor, intervals_te_rew, column_to_time_features, window_size):
+    def __init__(self, data: torch.tensor, intervals_te_rew, column_to_time_features, window_size, device=None):
+        if device is None:
+            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = device
         self.data = data
+        self.data.to(self.device)
         self.pred_counter = window_size
         self.trace_index = None
         self.intervals = intervals_te_rew
@@ -54,23 +58,27 @@ class PMEnv(gym.Env):
         return out
 
     def step(self, next_te: torch.tensor, next_act: torch.tensor):
-        '''
+        """
         returns: next_s, (reward_te, reward_act), is_done, add_inf
-        '''
+        """
         true_te = self.data[:, self.pred_counter, self.column_feature['te']]
         te_rew = get_te_reward(true=true_te, pred=next_te, intervals=self.intervals)
         # (f'te_reward = \n{te_rew}')
         true_act_oh = self.data[:, self.pred_counter, len(self.column_feature):]
 
-        pred_act_oh = torch.zeros(self.data.shape[0], self.data.shape[-1] - len(self.column_feature), dtype=int)
+        pred_act_oh = torch.zeros(self.data.shape[0], self.data.shape[-1] - len(self.column_feature),
+                                  dtype=torch.uint8, device=self.device)
         pred_act_oh[range(pred_act_oh.shape[0]), next_act.long()] = 1
 
         act_rew = get_act_reward(true_act_oh=true_act_oh, pred_act_oh=pred_act_oh)
-
+        print('envs.PMEnv.step::')
+        print(f'\tself.given_state.device={self.given_state.device}')
+        print(f'\tnext_act.device={next_act.device}')
+        print(f'\tnext_te.device={next_te.device}')
+        print(f'\tself.device={self.device}')
         next_s = get_next_input(prev_inp=self.given_state,
-                                next_act=next_act,
-                                next_te=next_te,
-                                column_feature=self.column_feature)
+                                next_act=next_act, next_te=next_te,
+                                column_feature=self.column_feature, device=self.device)
         self.given_state = next_s
 
         is_done = next_s[:, self.win - 1, len(self.column_feature):].sum(axis=1)
@@ -81,3 +89,6 @@ class PMEnv(gym.Env):
 
         self.pred_counter += 1
         return next_s, (te_rew, act_rew), is_done, {}
+
+    def to(self, device):
+        self.data.to(device)

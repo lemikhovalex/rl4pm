@@ -10,10 +10,10 @@ class Agency:
         self.hidden_size = hidden
         self.input_size = input_size
         self.n_lstm = n_lstm
-        self.te_agent = AgentTeDiscrete(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
-                                        te_intervals=te_intervals).float()
         self.ac_agent = AgentAct(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
                                  out_shape=n_classes).float()
+        self.te_agent = AgentTeDiscrete(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
+                                        te_intervals=te_intervals).float()
         self.discount_factor = discount_factor
         self.te_agent_targ = AgentTeDiscrete(input_size=input_size, hidden_layer=hidden, n_lstm=n_lstm,
                                              te_intervals=te_intervals).float()

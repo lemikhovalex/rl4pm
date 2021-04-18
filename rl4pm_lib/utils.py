@@ -3,17 +3,26 @@ import numpy as np
 from .replay_buffer import State, Datum
 
 
-def play_and_record(agent_te, agent_ac, env, exp_replay):
+def play_and_record(agent_te, agent_ac, env, exp_replay,
+                    process_dvice=None,
+                    dest_device=torch.device('cpu')):
+    if process_dvice is None:
+        process_dvice = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     agent_te.eval()
-    agent_te.eval()
+    agent_ac.eval()
     inp = env.reset()
     n_traces = inp.shape[0]
-    inp = inp.view(n_traces, 1, -1).float()
-    is_done = torch.zeros(env.data.shape[0]).bool()
-    h_a = torch.zeros(agent_ac.n_lstm, n_traces, agent_ac.hidden)
-    c_a = torch.zeros(agent_ac.n_lstm, n_traces, agent_ac.hidden)
-    h_t = torch.zeros(agent_te.n_lstm, n_traces, agent_te.hidden)
-    c_t = torch.zeros(agent_te.n_lstm, n_traces, agent_te.hidden)
+    inp = inp.view(n_traces, 1, -1).float().to(device=process_dvice)
+    is_done = torch.zeros(env.data.shape[0], device=process_dvice).bool()
+    h_a = torch.zeros(agent_ac.n_lstm, n_traces, agent_ac.hidden, device=process_dvice)
+    c_a = torch.zeros(agent_ac.n_lstm, n_traces, agent_ac.hidden, device=process_dvice)
+    h_t = torch.zeros(agent_te.n_lstm, n_traces, agent_te.hidden, device=process_dvice)
+    c_t = torch.zeros(agent_te.n_lstm, n_traces, agent_te.hidden, device=process_dvice)
+
+    agent_te.to(device=process_dvice)
+    agent_ac.to(device=process_dvice)
+    if env.device != process_dvice:
+        env.to(device=process_dvice)
 
     episode_te_rew = None
     episode_ac_rew = None
@@ -28,13 +37,19 @@ def play_and_record(agent_te, agent_ac, env, exp_replay):
 
         next_te, (h_t, c_t) = agent_te.sample_action(x=inp, hidden=(h_t, c_t), stoch=True)
 
+        print('utils.play_and_record::')
+        print(f'\tprocess_device={process_dvice}')
+        print(f'\tagent_te.device={next(agent_te.parameters()).device}')
+        print(f'\tagent_ac.device={next(agent_ac.parameters()).device}')
+        print(f'\tnext_te.device={next_te.device}')
+        print(f'\tagent_te.act_to_te(next_te).device={agent_te.act_to_te(next_te).device}')
+        print(f'\tnext_ac.device={next_ac.device}')
         n_inp, (reward_te, reward_ac), is_done, add_inf = env.step(agent_te.act_to_te(next_te), next_ac)
         n_inp = n_inp.view(n_traces, 1, -1).float()
 
         state_t_next = State(state=n_inp,
                              h_ac=h_a, c_ac=c_a,
                              h_te=h_t, c_te=c_t)
-
         datum = Datum(obs_t=state_t, action_te=next_te, action_ac=next_ac, reward_ac=reward_ac, reward_te=reward_te,
                       obs_tp1=state_t_next, dones=is_done)
         if episode_te_rew is None:
@@ -49,6 +64,9 @@ def play_and_record(agent_te, agent_ac, env, exp_replay):
             n += is_done.logical_not().sum().item()
         except AttributeError:
             n += 1 - is_done
+
+        if process_dvice != dest_device:
+            datum.to(device=dest_device)
 
         exp_replay.push(datum)
         inp = n_inp
