@@ -45,7 +45,7 @@ def play_and_record(agent_te, agent_ac, env, exp_replay,
         # print(f'\tnext_te.device={next_te.device}')
         # print(f'\tagent_te.act_to_te(next_te).device={agent_te.act_to_te(next_te).device}')
         # print(f'\tnext_ac.device={next_ac.device}')
-        n_inp, (reward_te, reward_ac), is_done, add_inf = env.step(agent_te.act_to_te(next_te), next_ac)
+        n_inp, (reward_te, reward_ac), is_done, add_inf = env.step((agent_te.act_to_te(next_te), next_ac))
         n_inp = n_inp.view(n_traces, 1, -1).float()
 
         state_t_next = State(state=n_inp,
@@ -91,25 +91,28 @@ def fill_trace(trace_np_matrix, max_len):
 
 
 def extract_trace_features(df: pd.DataFrame, trace_id, max_len):
+    to_dr = []
+    for col in ['timestamp', 'trace_id', 'activity']:
+        if col in df.columns:
+            to_dr.append(col)
     if trace_id is not None:
-        df_id = df[df['trace_id'] == trace_id]
-        for col in ['timestamp', 'trace_id', 'activity']:
-            if col in df.columns:
-                df_id.drop(columns=[col], inplace=True)
-        trace_vals = df_id.values
+        trace_vals = df[df['trace_id'] == trace_id].drop(columns=to_dr).values
         trace_vals = fill_trace(trace_vals, max_len)
         trace_vals = torch.as_tensor(trace_vals).unsqueeze(0)
     else:
-        trace_vals = torch.zeros(1, max_len, df.shape[1] - 3)
+        n_features = df.drop(columns=to_dr).shape[1]
+        trace_vals = torch.zeros(1, max_len, n_features)
     return trace_vals
 
 
 def extend_env_matrix(env_matrix, df: pd.DataFrame, t_id, max_len):
     if env_matrix is not None:
         trace_vals = extract_trace_features(df, t_id, max_len)
+        assert trace_vals.shape[2] == 27
         env_matrix = torch.cat([env_matrix, trace_vals])
     else:
         env_matrix = extract_trace_features(df, t_id, max_len)
+        assert env_matrix.shape[2] == 27
     return env_matrix
 
 
@@ -122,7 +125,7 @@ def get_traces_matrix(df: pd.DataFrame, env_trace_ids):
             if max_len < trace_len:
                 max_len = trace_len
 
-    for _i, t_id in enumerate(env_trace_ids):
+    for t_id in env_trace_ids:
         env_matrix = extend_env_matrix(env_matrix, df, t_id, max_len)
 
     return env_matrix
