@@ -199,3 +199,6 @@ class ReplayMemory(object):
     def __len__(self):
         return len(self._storage)
 
+    def is_full(self):
+        return len(self._storage) == self._maxsize
+
