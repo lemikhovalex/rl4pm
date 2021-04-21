@@ -37,9 +37,7 @@ def scale_tt(df):
     max_tt = 0
     for t_id in traces:
         loc_df = df[df['trace_id'] == t_id]
-        max_time = loc_df['timestamp'].max()
-        min_time = loc_df['timestamp'].min()
-        _max_tt = (max_time - min_time).total_seconds()
+        _max_tt = loc_df['tt'].max()
         if _max_tt > max_tt:
             max_tt = _max_tt
     # df['tt'] = df['tt'] / max_tt
@@ -102,7 +100,6 @@ class PaperScaler:
 
     def fit(self, df: pd.DataFrame):
         cols = df.columns.values
-        assert 'timestamp' in cols
         assert 'trace_id' in cols
         assert 'te' in cols
 
@@ -117,4 +114,4 @@ class PaperScaler:
             out = x
         for _cf in self.column_features:
             out[:, :, self.column_features[_cf]] = out[:, :, self.column_features[_cf]] / self.scales[_cf]
-
+        return out
