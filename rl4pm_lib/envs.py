@@ -1,5 +1,6 @@
 import torch
 import gym
+from .preprocessing import PaperScaler
 
 
 def get_next_input(prev_inp, next_act, next_te, column_feature, device):
@@ -25,9 +26,8 @@ def get_te_reward(true: torch.tensor, pred: torch.tensor, intervals):
     for inter in intervals:
         true_here = (true > inter[0]) * (true <= inter[1])
         pred_here = (pred > inter[0]) * (pred <= inter[1])
-        assert true_here.shape == pred_here.shape
         masks.append(true_here * pred_here)
-    out = torch.stack(masks).T.sum(dim=1)
+    out = torch.stack(masks).sum(dim=0)
     return out
 
 
@@ -39,12 +39,10 @@ def get_act_reward(true_act_oh, pred_act_oh):
 
 class PMEnv(gym.Env):
     def __init__(self, data: torch.tensor, intervals_te_rew, column_to_time_features, window_size,
-                 device=None, scales=None):
+                 device=None, scaler=PaperScaler()):
         if device is None:
             device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        if scales is None:
-            scales = {'te': 1., 'tw': 1., 'tt': 1.}
-        self.scales = scales
+        self.scaler = scaler
         self.device = device
         self.data = data.clone().detach().to(self.device)
         self.pred_counter = window_size
@@ -59,12 +57,15 @@ class PMEnv(gym.Env):
         out = self.data[:, :self.win]
         self.given_state = out
         self.trace_index = trace_n
+
+        out = self.scaler.transform(out, inplace=True)
         return out
 
-    def step(self, next_te: torch.tensor, next_act: torch.tensor):
+    def step(self, action: (torch.tensor, torch.tensor)):
         """
         returns: next_s, (reward_te, reward_act), is_done, add_inf
         """
+        next_te, next_act = action
         true_te = self.data[:, self.pred_counter, self.column_feature['te']]
         # print('envs.PMEnv.step::')
         # print(f'\tself.data.device={self.data.device}')
@@ -92,8 +93,7 @@ class PMEnv(gym.Env):
 
         self.pred_counter += 1
         # do scaling
-        for _tf in self.scales:
-            next_s[:, :, self.column_feature[_tf]] = next_s[:, :, self.column_feature[_tf]] / self.scales[_tf]
+        next_s = self.scaler.transform(next_s, inplace=True)
 
         return next_s, (te_rew, act_rew), is_done, {}
 
