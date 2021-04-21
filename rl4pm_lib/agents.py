@@ -31,7 +31,7 @@ class AgentAct(torch.nn.Module):
             hidden = (h_te, c_te)
         return self.net(x, hidden)
 
-    def sample_action(self, x, hidden, stoch=False):
+    def sample_action(self, x, hidden=None, stoch=False):
         q_values, hidden = self.net(x, hidden)
 
         act_idx = self.sample_action_from_q(q_values, stoch=stoch)
@@ -70,7 +70,7 @@ class AgentTeDiscrete(torch.nn.Module):
             hidden = (h_te, c_te)
         return self.net(x, hidden)
 
-    def sample_action(self, x, hidden, stoch=False):
+    def sample_action(self, x, hidden=None, stoch=False):
         q_values, hidden = self.net(x, hidden)
 
         t_idx = self.sample_action_from_q(q_values, stoch)
