@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import pandas as pd
 from .replay_buffer import State, Datum
 
 
@@ -89,9 +90,12 @@ def fill_trace(trace_np_matrix, max_len):
     return np.concatenate((trace_np_matrix, pad))
 
 
-def extract_trace_features(df, trace_id, max_len):
+def extract_trace_features(df: pd.DataFrame, trace_id, max_len):
     if trace_id is not None:
-        df_id = df[df['trace_id'] == trace_id].drop(columns=['timestamp', 'trace_id', 'activity'])
+        df_id = df[df['trace_id'] == trace_id]
+        for col in ['timestamp', 'trace_id', 'activity']:
+            if col in df.columns:
+                df_id.drop(columns=[col], inplace=True)
         trace_vals = df_id.values
         trace_vals = fill_trace(trace_vals, max_len)
         trace_vals = torch.as_tensor(trace_vals).unsqueeze(0)
@@ -100,7 +104,7 @@ def extract_trace_features(df, trace_id, max_len):
     return trace_vals
 
 
-def extend_env_matrix(env_matrix, df, t_id, max_len):
+def extend_env_matrix(env_matrix, df: pd.DataFrame, t_id, max_len):
     if env_matrix is not None:
         trace_vals = extract_trace_features(df, t_id, max_len)
         env_matrix = torch.cat([env_matrix, trace_vals])
@@ -109,7 +113,7 @@ def extend_env_matrix(env_matrix, df, t_id, max_len):
     return env_matrix
 
 
-def get_traces_matrix(df, env_trace_ids):
+def get_traces_matrix(df: pd.DataFrame, env_trace_ids):
     env_matrix = None
     max_len = 0
     for t_id in env_trace_ids:
