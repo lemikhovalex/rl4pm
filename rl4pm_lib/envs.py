@@ -38,6 +38,38 @@ def get_act_reward(true_act_oh, pred_act_oh):
 
 
 class PMEnv(gym.Env):
+    """
+    a class, inherited from gym.Env. It is combined env which recieves step - delta time for next step and next action
+    basicly it is a cover for data, which just manipulate it
+    Args:
+        scaler(.preprocessing.PaperScaler): it is needed to process data before it comes to Model
+        device(torch.device): divice where the data is stored
+        data(torch.tensor): the data tensor which is parsed trace.
+                            data.shape = (n_traces, max_len, n_features_for_event). Last features are one-hot encoded
+                            activity. First ones - time related or custom. All of them must present in column_feature
+        intervals_te_rew(list[(float, float)]): this env reacts on next event time prediction as for classification
+                                                problem - if prediction is in same interval as true value.
+                                                So this is a list of turple of two - begin and end of interval
+        column_to_time_features(dict): mapping from not-one-hot-feature column to it possition in tensor
+        window_size(int): next state is a window of size window_size.
+    Attributes:
+        scaler(.preprocessing.PaperScaler): it is needed to process data before it comes to Model
+        device(torch.device): divice where the data is stored
+        data(torch.tensor): the data tensor which is parsed trace.
+                            data.shape = (n_traces, max_len, n_features_for_event). Last features are one-hot encoded
+                            activity. First ones - time related or custom. All of them must present in column_feature
+        intervals_te_rew(list[(float, float)]): this env reacts on next event time prediction as for classification
+                                                problem - if prediction is in same interval as true value.
+                                                So this is a list of turple of two - begin and end of interval
+        column_to_time_features(dict): mapping from not-one-hot-feature column to it possition in tensor
+        window_size(int): next state is a window of size window_size.
+        trace_index(int): index which will be must be predicted
+        win(int): window size (from arg)
+        given_state(torhc.tensor): state, which was return from .step(), or .reset() at previous moment.
+    """
+    def render(self, mode='human'):
+        pass
+
     def __init__(self, data: torch.tensor, intervals_te_rew, column_to_time_features, window_size,
                  device=None, scaler=PaperScaler()):
         if device is None:
