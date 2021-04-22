@@ -3,8 +3,24 @@ import gym
 from .preprocessing import PaperScaler
 
 
-def get_next_input(prev_inp, next_act, next_te, column_feature, device):
-    out = prev_inp[:, 1:]
+def get_next_input_replaced_by_pred(prev_inp: torch.tensor, next_act: torch.tensor, next_te: torch.tensor,
+                                    column_feature: dict, window_size: int, device: torch.device):
+    """
+    construct a new input, based on previous one. s_t = [(a_{t-1}, a_{t}), (te_{t-1}, te_{t}), ...]
+    got predicted a'_{t+1}.
+    so s_{t+1} = [(a_{t}, a`_{t+1}), (te`_{t}, te_{t+1}), ...]
+    and s_{t+2} = [(a`_{t+1}, a`_{t+2}), (te`_{t+1}, te_{t+2}), ...]
+    Args:
+        prev_inp: previous inp for nn, shape=[n_traces, window_size, n_features_for_event]
+        next_act: predicted next activity, shape=[n_traces]
+        next_te: predicted next te, shape=[n_traces]
+        column_feature: map from not-one-hot features to idex
+        window_size: size of window, sent to NN
+        device: divice, where next event will be stored
+    Returns: torch tensor, whith state, extended by next predictions, and shorted,
+
+    """
+    out = prev_inp[:, window_size-1:]
     next_event = torch.zeros(prev_inp.shape[0], prev_inp.shape[2], device=device)
     next_event[:, column_feature['te']] = next_te
     last_event = prev_inp[:, -1].squeeze(1)
@@ -21,7 +37,19 @@ def get_next_input(prev_inp, next_act, next_te, column_feature, device):
     return out
 
 
-def get_te_reward(true: torch.tensor, pred: torch.tensor, intervals):
+def get_te_reward_categorized(true: torch.tensor, pred: torch.tensor, intervals):
+    """
+    This function recieves tensors with predicted next-time delta intervals. It naturally recieves float tensors
+    the reward depends on time intervals. If predicted and truth are in the same interal, then +1, else +0
+    Args:
+        true: torch tensor of float, predicted te
+        pred: torch tensor of float, ground-truth te
+        intervals: list of tuples of intervals - intervals for categorized prediction
+
+    Returns:
+        torch tensor with rewards for predictions
+
+    """
     masks = []
     for inter in intervals:
         true_here = (true > inter[0]) * (true <= inter[1])
@@ -31,7 +59,17 @@ def get_te_reward(true: torch.tensor, pred: torch.tensor, intervals):
     return out
 
 
-def get_act_reward(true_act_oh, pred_act_oh):
+def get_ctegorial_reward(true_act_oh: torch.tensor, pred_act_oh: torch.tensor):
+    """
+    function to recieve reward for categorized features as  +1 if guessed, 0 if not
+    args can be swaped
+    Args:
+        true_act_oh: tensor with true one-hot predictions
+        pred_act_oh: tensor with predicted one-hot predictions
+
+    Returns: tensor, reduced dim with one-hots
+
+    """
     assert true_act_oh.shape == pred_act_oh.shape
     mult = (true_act_oh * pred_act_oh)
     return mult.sum(dim=1)
@@ -67,6 +105,7 @@ class PMEnv(gym.Env):
         win(int): window size (from arg)
         given_state(torhc.tensor): state, which was return from .step(), or .reset() at previous moment.
     """
+
     def render(self, mode='human'):
         pass
 
@@ -100,6 +139,11 @@ class PMEnv(gym.Env):
         out = self.scaler.transform(out, inplace=True)
         return out
 
+    def get_next_input(self, prev_inp: torch.tensor, next_act: torch.tensor, next_te: torch.tensor):
+        return get_next_input_replaced_by_pred(prev_inp=prev_inp, next_act=next_act, next_te=next_te,
+                                               column_feature=self.column_feature, window_size=self.win,
+                                               device=self.device)
+
     def step(self, action: (torch.tensor, torch.tensor)):
         """
         Basic method for interracting with env.
@@ -120,7 +164,7 @@ class PMEnv(gym.Env):
         # print(f'\tself.data.device={self.data.device}')
         # print(f'\ttrue_te.device={true_te.device}')
         # print(f'\tnext_te.device={next_te.device}')
-        te_rew = get_te_reward(true=true_te, pred=next_te, intervals=self.intervals)
+        te_rew = get_te_reward_categorized(true=true_te, pred=next_te, intervals=self.intervals)
         # (f'te_reward = \n{te_rew}')
         true_act_oh = self.data[:, self.pred_counter, len(self.column_feature):]
 
@@ -128,10 +172,8 @@ class PMEnv(gym.Env):
                                   dtype=torch.uint8, device=self.device)
         pred_act_oh[range(pred_act_oh.shape[0]), next_act.long()] = 1
 
-        act_rew = get_act_reward(true_act_oh=true_act_oh, pred_act_oh=pred_act_oh)
-        next_s = get_next_input(prev_inp=self.given_state,
-                                next_act=next_act, next_te=next_te,
-                                column_feature=self.column_feature, device=self.device)
+        act_rew = get_ctegorial_reward(true_act_oh=true_act_oh, pred_act_oh=pred_act_oh)
+        next_s = self.get_next_input(prev_inp=self.given_state, next_act=next_act, next_te=next_te)
         self.given_state = next_s.clone()
 
         is_done = next_s[:, self.win - 1, len(self.column_feature):].sum(axis=1)
