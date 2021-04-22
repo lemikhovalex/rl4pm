@@ -3,6 +3,15 @@ from torch.nn import functional as t_functional
 
 
 def sample_action_from_q(q_values, stoch=False):
+    """
+    sampling, based on q-values
+    Args:
+        q_values: q-values
+        stoch: greedy, or with stoch. basicly function is all about this storhc logic
+
+    Returns:
+        indexes of q-values, which must be chosen for Bellman equation
+    """
     if stoch:
         _max = torch.max(q_values, dim=2, keepdim=True).values
         _min = torch.min(q_values, dim=2, keepdim=True).values
@@ -16,6 +25,19 @@ def sample_action_from_q(q_values, stoch=False):
 
 
 class NetAgent(torch.nn.Module):
+    """
+    Net used for agents, lstm-based
+    Args:
+        input_size(int): nuber of features for input
+        hidden_layer(int): size of hidden layer
+        n_lstm(int): number of lstm stacked for NN
+        out_shape(int): out dimension
+
+    Attributes:
+        lstm(torch.nn.LSTM): lstm-based piece of nn
+        relu(torch.nn.ReLU): activation function
+        fc(torch.nn.Linear): fully connected layer
+    """
     def __init__(self, input_size, hidden_layer, n_lstm, out_shape):
         super(NetAgent, self).__init__()
         self.lstm = torch.nn.LSTM(input_size=input_size, hidden_size=hidden_layer, batch_first=True, num_layers=n_lstm)
@@ -30,6 +52,19 @@ class NetAgent(torch.nn.Module):
 
 
 class BaseAgent(torch.nn.Module):
+    """
+    Base agent, suitble for discrete actions
+    Args:
+        input_size(int): nuber of features for input. for NN creation
+        hidden_layer(int): size of hidden layer. for NN creation
+        n_lstm(int): number of lstm stacked for NN. for NN creation
+        out_shape(int): out dimension. for NN creation
+    Attributes
+        n_lstm(int): number of lstm stacked for NN. for NN creation
+        net(torhc.nn.Module): basicly net, which returns q-values
+        hidden_layer(int): size of hidden layer. for NN creation
+
+    """
     def __init__(self, input_size, hidden_layer, n_lstm, out_shape):
         super(BaseAgent, self).__init__()
         self.n_lstm = n_lstm
@@ -44,13 +79,32 @@ class BaseAgent(torch.nn.Module):
         return self.net(x, hidden)
 
     def sample_action(self, x, hidden=None, stoch=False):
+        """
+        is smaples actions with given state and hidden output, in RNN
+        Args:
+            x: state, for RNN
+            hidden: as for RNN
+            stoch: if action will be sampled by randomly, or not
+
+        Returns: indexes of q -values(keys for discrete actions) and hidden state, maybe need to save it
+
+        """
         q_values, hidden = self.net(x, hidden)
 
         act_idx = self.sample_action_from_q(q_values, stoch=stoch)
         act_idx = act_idx.view(act_idx.shape[0])
         return act_idx, hidden
 
-    def sample_action_from_q(self, q_values, stoch=False):
+    def sample_action_from_q(self, q_values: torch.tensor, stoch=False):
+        """
+        method which samples action directly from q-value. it is usefull while computin Bellman error
+        Args:
+            q_values(torhc.tensor): qvalues, based on which the actions must be sampled
+            stoch(bool): flag, if action must be produced randomly, or greedy
+
+        Returns:
+
+        """
         return sample_action_from_q(q_values=q_values, stoch=stoch)
 
 
@@ -73,6 +127,14 @@ class AgentTeDiscrete(BaseAgent):
         self.hidden = hidden_layer
 
     def act_to_te(self, t_idx):
+        """
+        additional method to convert key(index) to real value
+        Args:
+            t_idx: indexes of time intervals
+
+        Returns: real values of next te predictionsm from indexes
+
+        """
         device = next(self.parameters()).device
         out = torch.zeros(t_idx.shape, device=device)
         for i in range(out.shape[0]):
