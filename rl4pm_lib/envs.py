@@ -84,19 +84,36 @@ class PMEnv(gym.Env):
         self.win = window_size
         self.given_state = None
 
-    def reset(self, trace_n=None):
+    def reset(self):
+        """
+        Basic method to prepare env for processing. Reset env to initial condition
+        Note:
+            must run it after env creation
+        Returns:
+            state(torch.tensor): initial state of env
+
+        """
         self.pred_counter = self.win
         out = self.data[:, :self.win]
         self.given_state = out
-        self.trace_index = trace_n
 
         out = self.scaler.transform(out, inplace=True)
         return out
 
     def step(self, action: (torch.tensor, torch.tensor)):
         """
-        returns: next_s, (reward_te, reward_act), is_done, add_inf
+        Basic method for interracting with env.
+        Returns:
+            next_s(torch.tensor), (te_rew(torch.tensor), act_rew(torch.tensor)), is_done(torhc.tensor), add_inf(dict)):
+                next_s: next state. shape=(n_traces, window_size, n_features_of_event)
+                te_rew, act_rew: rewards for next time and activity prediction, tensors.
+                                    shape=(n_traces, 1, 1)
+                is_done: bool tensor, indicates, if there is a final event in trace. it can be indicated by one-hot
+                            features - all zeros
+                add_inf: some additional information
+
         """
+        assert self.pred_counter is not None, 'env was not reset'
         next_te, next_act = action
         true_te = self.data[:, self.pred_counter, self.column_feature['te']]
         # print('envs.PMEnv.step::')
@@ -129,5 +146,11 @@ class PMEnv(gym.Env):
 
         return next_s, (te_rew, act_rew), is_done, {}
 
-    def to(self, device):
+    def to(self, device: torch.device):
+        """
+        Args:
+            device(torch.device): device where data is stored
+
+        Returns: just as it returns torch.tensor.to(device)
+        """
         self.data.to(device)
