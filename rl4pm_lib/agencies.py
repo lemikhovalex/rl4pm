@@ -1,10 +1,34 @@
 import torch
-from .agents import AgentAct, AgentTeDiscrete
+from .agents import AgentAct, AgentTeDiscrete, BaseAgent
 from .utils import init_weights
 from torch.nn import functional as t_functional
 
 
 class Agency:
+    """
+    class that includes agents(target net, and net for predicting) and does train
+    Args:
+        input_size(int): nuber of features for input. for agent creation
+        hidden(int): size of hidden layer. for agent creation
+        n_lstm(int): number of lstm stacked. for agent creation
+        te_intervals(list): list of tuples (float, float), which are beginnings and ends of tr intervals for reward
+                            constructions. if predicted te, and true in the same interval, then +1, else +0
+        n_classes(int): n_classes for action predictions
+        discount_factor(float): Q(s) = \sum_{t=0}^{\inf} r_{t} \cdot discount_factor^{t}
+    Attributes:
+        input_size(int): nuber of features for input. for agent creation
+        hidden_size(int): size of hidden layer. for agent creation
+        n_lstm(int): number of lstm stacked. for agent creation
+        te_intervals(list): list of tuples (float, float), which are beginnings and ends of tr intervals for reward
+                            constructions. if predicted te, and true in the same interval, then +1, else +0
+        discount_factor(float): Q(s) = \sum_{t=0}^{\inf} r_{t} \cdot discount_factor^{t}
+        ac_agent(AgentAct): agent, which predicts actions and have nn inside it
+        te_agent(AgentTeDiscrete): agent, which predicts actions and have nn inside it
+        ac_agent_targ(AgentAct): target version of ac_agent, not ot change nn weights so quiqly
+        te_agent_targ(AgentTeDiscrete): target version of te_agent, not ot change nn weights so quiqly
+        te_opt(torch.optim): optimizer for te_agent
+        ac_opt(torch.optim): optimizer ac_agent
+    """
     def __init__(self, input_size, hidden, n_lstm, te_intervals, ac_learning_rate,
                  te_learning_rate, n_classes, discount_factor):
         self.hidden_size = hidden
@@ -29,6 +53,14 @@ class Agency:
         self.ac_opt = torch.optim.Adam(self.ac_agent.parameters(), lr=te_learning_rate)
 
     def refresh_target(self, polyak_avg=1):
+        """
+        this method refresh terget agents smoothly (polyak average)
+        Args:
+            polyak_avg: paarm_targ_new = paarm_new * polyak_avg + paarm_targ_old * (1 - polyak_avg)
+
+        Returns: nothing
+
+        """
         for target_param, param in zip(self.te_agent_targ.parameters(), self.te_agent.parameters()):
             target_param.data.copy_(polyak_avg * param + (1 - polyak_avg) * target_param)
 
@@ -36,6 +68,17 @@ class Agency:
             target_param.data.copy_(polyak_avg * param + (1 - polyak_avg) * target_param)
 
     def train(self, exp_replay, batch_size):
+        """
+        not a .train() as for nn.Module))) it trains agents on batch from exp replay
+        Args:
+            exp_replay(it can sample, push and len()): replay buffer, from which returns
+                                                        (batch_size, n_traces, n_features_nn).
+                                                        n_traces is an exp_replay attribute
+            batch_size(int): size of batch, sampled from exp_replay
+
+        Returns: te_loss(float), ac_loss(float): Bellman losses
+
+        """
         self.te_agent.train()
         self.ac_agent.train()
         self.ac_agent_targ.train()
@@ -58,9 +101,25 @@ class Agency:
 
         return te_agent_loss.item(), ac_agent_loss.item()
 
-    def get_loss_discrete_agent(self, obs_t, h_t, c_t, actions, rewards,
-                                obs_tp1, h_tp1, c_tp1, is_dones, agent):
+    def get_loss_discrete_agent(self, obs_t: torch.tensor, h_t: torch.tensor, c_t: torch.tensor, actions: torch.tensor,
+                                rewards: torch.tensor, obs_tp1: torch.tensor, h_tp1: torch.tensor, c_tp1: torch.tensor,
+                                agent: BaseAgent):
+        """
+        method which calculates loss for descrete predictions. based on (state, reward, next_state)
+        Args:
+            obs_t(torch.tensor): observation
+            h_t(torch.tensor): accumulated hidden, flrom lstm, for current obs
+            c_t(torch.tensor): accumulated cell, flrom lstm, for current obs
+            actions(torch.tensor): next action, whether action or te
+            rewards(torch.tensor): rewards acton
+            obs_tp1(torch.tensor): next observation, provided from obs, after action
+            h_tp1(torch.tensor): accumulated hidden, flrom lstm, for next_obs
+            c_tp1(torch.tensor): accumulated cell, flrom lstm, for next_obs
+            agent(torch.nn.Module): agent, which samples actions and have nn inside
 
+        Returns: Bellman loss
+
+        """
         n_trails = obs_t.shape[1]
         max_len = obs_t.shape[0]
         obs_t = obs_t.view(-1, 1, self.input_size)
@@ -75,6 +134,7 @@ class Agency:
             obs_tp1 = obs_tp1.view(-1, 1, self.input_size)
             h_tp1 = h_tp1.view(agent.n_lstm, -1, self.hidden_size)
             c_tp1 = c_tp1.view(agent.n_lstm, -1, self.hidden_size)
+
             qs_next, _ = agent(x=obs_tp1, hidden=(h_tp1, c_tp1))
             qs_next = qs_next.view(max_len, n_trails, -1)
             actions_idx_next = agent.sample_action_from_q(qs_next, stoch=True)
@@ -86,9 +146,32 @@ class Agency:
 
         return loss
 
-    def get_losses(self, states, actions_te, actions_ac, rewards_te, rewards_ac,
-                   next_states, is_dones):
+    def get_losses(self, states: dict, actions_te: torch.tensor, actions_ac: torch.tensor, rewards_te: torch.tensor,
+                   rewards_ac: torch.tensor, next_states: dict, is_dones: torch.tensor):
+        """
+        this function returns all needed losses for train
+        Args:
+            states: dict('s': torch.tensor, - observation
+                   'h_te': torch.tensor, - accumulated hidden, flrom lstm, for current obs, te agent
+                   'c_te': torch.tensor, - accumulated cell, flrom lstm, for current obs, te agent
+                   'h_ac': torch.tensor, - accumulated hidden, flrom lstm, for current obs, action agent
+                   'c_ac': torch.tensor - accumulated cell, flrom lstm, for current obs, action agent
+                   )
+            actions_te(torch.tensor): prediction for te, indexes
+            actions_ac(torch.tensor): prediction for te, indexes
+            rewards_te(torch.tensor): rewards te
+            rewards_ac(torch.tensor): rewards acton
+            next_states(torch.tensor): : dict('s': torch.tensor, - next observation
+                   'h_te': torch.tensor, - accumulated hidden, flrom lstm, for next obs, te agent
+                   'c_te': torch.tensor, - accumulated cell, flrom lstm, for next obs, te agent
+                   'h_ac': torch.tensor, - accumulated hidden, flrom lstm, for next obs, action agent
+                   'c_ac': torch.tensor - accumulated cell, flrom lstm, for next obs, action agent
+                   )
+            is_dones(torch.tensor): tensors with true values if the next_states are final
 
+        Returns: te_agent_loss, ac_agent_loss, provided by self.get_loss_discrete_agent
+
+        """
         n_features = states['s'].shape[-1]
         hidden_te = states['h_te'].shape[-1]
         hidden_ac = states['h_ac'].shape[-1]
@@ -114,17 +197,25 @@ class Agency:
         rewards_ac = rewards_ac.float().view(-1)[is_dones.logical_not()].to(loc_device)
 
         te_agent_loss = self.get_loss_discrete_agent(obs_t=obs_t, h_t=obs_t_h_te, c_t=obs_t_c_te,
-                                                     actions=actions_te, rewards=rewards_te, is_dones=is_dones,
+                                                     actions=actions_te, rewards=rewards_te,
                                                      obs_tp1=obs_tp1, h_tp1=obs_tp1_h_te, c_tp1=obs_tp1_c_te,
                                                      agent=self.te_agent)
 
         ac_agent_loss = self.get_loss_discrete_agent(obs_t=obs_t, h_t=obs_t_h_ac, c_t=obs_t_c_ac,
-                                                     actions=actions_ac, rewards=rewards_ac, is_dones=is_dones,
+                                                     actions=actions_ac, rewards=rewards_ac,
                                                      obs_tp1=obs_tp1, h_tp1=obs_tp1_h_ac, c_tp1=obs_tp1_c_ac,
                                                      agent=self.ac_agent)
         return te_agent_loss, ac_agent_loss
 
-    def to(self, device):
+    def to(self, device: torch.device):
+        """
+        moves agents to device
+        Args:
+            device: gpu or cpu
+
+        Returns:
+
+        """
         self.ac_agent.to(device)
         self.te_agent.to(device)
         self.ac_agent_targ.to(device)
