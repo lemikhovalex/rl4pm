@@ -3,21 +3,21 @@ import torch
 from sklearn.preprocessing import LabelBinarizer
 
 
-def get_t_w(df):
+def get_t_w(df: pd.DataFrame):
     _df = df.copy()
     _dt_s_mn = _df['timestamp'].apply(lambda x: (x - x.replace(hour=0, minute=0, second=0, microsecond=0)).total_seconds())
     _dt_s_mn += _df['timestamp'].apply(lambda x: x.weekday() * 24 * 60 * 60)
     return _dt_s_mn.values
 
 
-def get_t_e(df):
+def get_t_e(df: pd.DataFrame):
     te = df['timestamp'].copy().diff()
     tr_diff = df['trace_id'].diff().fillna(1)
     te[tr_diff != 0] = 0.
     return te.values * 1e-9
 
 
-def get_t_t(df):
+def get_t_t(df: pd.DataFrame):
     traces = list(set(df['trace_id']))
     out = df.copy()[['timestamp', 'trace_id']]
     t_ts = {}
@@ -27,8 +27,7 @@ def get_t_t(df):
     return out['tt'].values
 
 
-def scale_tw(df):
-    # df['tw'] = df['tw'] / (24 * 60 * 60)
+def scale_tw(df: pd.DataFrame):
     return 24 * 60 * 60.
 
 
@@ -44,7 +43,7 @@ def scale_tt(df):
     return max_tt
 
 
-def scale_te(df):
+def scale_te(df: pd.DataFrame):
     traces = list(set(df['trace_id'].values))
     max_te = 0
     for t_id in traces:
