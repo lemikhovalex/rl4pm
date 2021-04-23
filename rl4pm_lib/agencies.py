@@ -105,7 +105,7 @@ class Agency:
 
     def get_loss_discrete_agent(self, obs_t: torch.tensor, h_t: torch.tensor, c_t: torch.tensor, actions: torch.tensor,
                                 rewards: torch.tensor, obs_tp1: torch.tensor, h_tp1: torch.tensor, c_tp1: torch.tensor,
-                                agent: BaseAgent):
+                                agent: BaseAgent, target: BaseAgent):
         """
         method which calculates loss for descrete predictions. based on (state, reward, next_state)
         Args:
@@ -118,6 +118,7 @@ class Agency:
             h_tp1(torch.tensor): accumulated hidden, flrom lstm, for next_obs
             c_tp1(torch.tensor): accumulated cell, flrom lstm, for next_obs
             agent(torch.nn.Module): agent, which samples actions and have nn inside
+            target(torch.nn.Module): target agent, which samples actions and have nn inside
 
         Returns: Bellman loss
 
@@ -129,11 +130,11 @@ class Agency:
         predicted_q_values = torch.gather(input=qs, index=actions.unsqueeze(2), dim=2).view(-1)
 
         with torch.no_grad():
-
             qs_next, _ = agent(x=obs_tp1, hidden=(h_tp1, c_tp1))
             qs_next = qs_next.view(max_len, n_trails, -1)
-            actions_idx_next = agent.sample_action_from_q(qs_next, stoch=True)
-        predicted_next_q_values = torch.gather(input=qs_next, index=actions_idx_next.unsqueeze(2), dim=2).view(-1)
+            best_actions_by_target, _ = target.sample_action(x=obs_tp1, hidden=(h_tp1, c_tp1), stoch=True)
+            best_actions_by_target = best_actions_by_target.long().view(-1).unsqueeze(1)
+        predicted_next_q_values = torch.gather(input=qs_next, index=best_actions_by_target.unsqueeze(2), dim=2).view(-1)
         q_reference = rewards + self.discount_factor * predicted_next_q_values
 
         # mean squared error loss to minimize
@@ -183,12 +184,12 @@ class Agency:
         te_agent_loss = self.get_loss_discrete_agent(obs_t=obs_tp0, h_t=obs_tp0_h_te, c_t=obs_tp0_c_te,
                                                      actions=actions_te, rewards=rewards_te,
                                                      obs_tp1=obs_tp1, h_tp1=obs_tp1_h_te, c_tp1=obs_tp1_c_te,
-                                                     agent=self.te_agent)
+                                                     agent=self.te_agent, target=self.te_agent_targ)
 
         ac_agent_loss = self.get_loss_discrete_agent(obs_t=obs_tp0, h_t=obs_tp0_h_ac, c_t=obs_tp0_c_ac,
                                                      actions=actions_ac, rewards=rewards_ac,
                                                      obs_tp1=obs_tp1, h_tp1=obs_tp1_h_ac, c_tp1=obs_tp1_c_ac,
-                                                     agent=self.ac_agent)
+                                                     agent=self.ac_agent, target=self.te_agent_targ)
         return te_agent_loss, ac_agent_loss
 
     def to(self, device: torch.device):
