@@ -39,14 +39,6 @@ def play_and_record(agent_te, agent_ac, env, exp_replay,
         next_ac, (h_a, c_a) = agent_ac.sample_action(x=inp, hidden=(h_a, c_a), stoch=stoch)
 
         next_te, (h_t, c_t) = agent_te.sample_action(x=inp, hidden=(h_t, c_t), stoch=stoch)
-
-        # print('utils.play_and_record::')
-        # print(f'\tprocess_device={process_dvice}')
-        # print(f'\tagent_te.device={next(agent_te.parameters()).device}')
-        # print(f'\tagent_ac.device={next(agent_ac.parameters()).device}')
-        # print(f'\tnext_te.device={next_te.device}')
-        # print(f'\tagent_te.act_to_te(next_te).device={agent_te.act_to_te(next_te).device}')
-        # print(f'\tnext_ac.device={next_ac.device}')
         n_inp, (reward_te, reward_ac), is_done, add_inf = env.step((agent_te.act_to_te(next_te), next_ac))
         n_inp = n_inp.view(n_traces, 1, -1).float()
 
