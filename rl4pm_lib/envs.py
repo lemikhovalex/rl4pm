@@ -20,7 +20,7 @@ def get_next_input_replaced_by_pred(prev_inp: torch.tensor, next_act: torch.tens
     Returns: torch tensor, whith state, extended by next predictions, and shorted,
 
     """
-    out = prev_inp[:, window_size-1:]
+    out = prev_inp[:, window_size - 1:]
     next_event = torch.zeros(prev_inp.shape[0], prev_inp.shape[2], device=device)
     next_event[:, column_feature['te']] = next_te
     last_event = prev_inp[:, -1].squeeze(1)
@@ -160,10 +160,6 @@ class PMEnv(gym.Env):
         assert self.pred_counter is not None, 'env was not reset'
         next_te, next_act = action
         true_te = self.data[:, self.pred_counter, self.column_feature['te']]
-        # print('envs.PMEnv.step::')
-        # print(f'\tself.data.device={self.data.device}')
-        # print(f'\ttrue_te.device={true_te.device}')
-        # print(f'\tnext_te.device={next_te.device}')
         te_rew = get_te_reward_categorized(true=true_te, pred=next_te, intervals=self.intervals)
         # (f'te_reward = \n{te_rew}')
         true_act_oh = self.data[:, self.pred_counter, len(self.column_feature):]
@@ -196,3 +192,13 @@ class PMEnv(gym.Env):
         Returns: just as it returns torch.tensor.to(device)
         """
         self.data.to(device)
+
+
+class PMEnvOneStepCons(PMEnv):
+    def __init__(self, data: torch.tensor, intervals_te_rew: list, column_to_time_features: dict, window_size: int,
+                 device=None, scaler=PaperScaler()):
+        super(PMEnvOneStepCons, self).__init__(data, intervals_te_rew, column_to_time_features, window_size,
+                                               device=device, scaler=scaler)
+
+    def get_next_input(self, prev_inp: torch.tensor, next_act: torch.tensor, next_te: torch.tensor):
+        return self.data[:, self.pred_counter - self.win:self.pred_counter, :]
