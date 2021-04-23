@@ -2,6 +2,8 @@ import torch
 import numpy as np
 import pandas as pd
 from .replay_buffer import State, Datum
+import matplotlib.pyplot as plt
+from math import floor, ceil
 
 
 def play_and_record(agent_te, agent_ac, env, exp_replay,
@@ -135,3 +137,46 @@ def init_weights(m):
     if type(m) == torch.nn.Linear:
         torch.nn.init.xavier_uniform_(m.weight)
         m.bias.data.fill_(0.01)
+
+
+def plot_laerning_process(te_rewards, ac_rewards, losses_te, losses_ac):
+    fig, axs = plt.subplots(2, 2, figsize=(16, 8))
+    fig.tight_layout(pad=5)
+    axs[0, 0].plot(te_rewards, label='$t_e$')
+    axs[0, 0].set(xlabel='epoch', ylabel='accuracy', title='Accuracy score for \n$t_e$ prediction')
+    axs[1, 0].plot(ac_rewards, label='next activity')
+    axs[1, 0].set(xlabel='epoch', ylabel='accuracy', title='Accuracy score for \nnext activity prediction')
+
+    axs[0, 1].plot(losses_ac, label='$t_e$')
+    axs[0, 1].set(xlabel='batch', ylabel='reward', title='Loss \n$t_e$ prediction')
+    axs[1, 1].plot(losses_te, label='next activity')
+    axs[1, 1].set(xlabel='batch', ylabel='reward', title='Loss \nnext activity prediction')
+    plt.legend()
+    plt.show()
+
+
+def split_to_fixed_bucket(array, bucket_size, fill_none=True):
+    index = len(array)
+    out = []
+    while index > 0:
+        beg = max(0, index - bucket_size)
+        end = index
+        out.append(array[beg: end])
+        index -= bucket_size
+    out[-1].extend([None] * (-1 * index))
+    return out
+
+
+def split_list_to_buckets(array, n):
+    n_buckets = ceil(len(array) / n)
+    extra_size = n_buckets * n - len(array)
+    out = []
+    fp = 0
+    lp = n
+    for i in range(n_buckets):
+        lp = lp - int(extra_size > 0)
+        out.append(array[fp: lp])
+        extra_size -= 1
+        fp = lp
+        lp += n
+    return out
