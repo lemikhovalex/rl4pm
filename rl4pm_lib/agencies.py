@@ -2,6 +2,7 @@ import torch
 from .agents import AgentAct, AgentTeDiscrete, BaseAgent
 from .utils import init_weights
 from torch.nn import functional as t_functional
+from .replay_buffer import State
 
 
 class Agency:
@@ -29,6 +30,7 @@ class Agency:
         te_opt(torch.optim): optimizer for te_agent
         ac_opt(torch.optim): optimizer ac_agent
     """
+
     def __init__(self, input_size, hidden, n_lstm, te_intervals, ac_learning_rate,
                  te_learning_rate, n_classes, discount_factor):
         self.hidden_size = hidden
@@ -122,18 +124,11 @@ class Agency:
         """
         n_trails = obs_t.shape[1]
         max_len = obs_t.shape[0]
-        obs_t = obs_t.view(-1, 1, self.input_size)
-        h_t = h_t.view(agent.n_lstm, -1, self.hidden_size)
-        c_t = c_t.view(agent.n_lstm, -1, self.hidden_size)
-
         qs, _ = agent(x=obs_t, hidden=(h_t, c_t))
         qs = qs.view(max_len, n_trails, -1)
         predicted_q_values = torch.gather(input=qs, index=actions.unsqueeze(2), dim=2).view(-1)
 
         with torch.no_grad():
-            obs_tp1 = obs_tp1.view(-1, 1, self.input_size)
-            h_tp1 = h_tp1.view(agent.n_lstm, -1, self.hidden_size)
-            c_tp1 = c_tp1.view(agent.n_lstm, -1, self.hidden_size)
 
             qs_next, _ = agent(x=obs_tp1, hidden=(h_tp1, c_tp1))
             qs_next = qs_next.view(max_len, n_trails, -1)
@@ -146,8 +141,8 @@ class Agency:
 
         return loss
 
-    def get_losses(self, states: dict, actions_te: torch.tensor, actions_ac: torch.tensor, rewards_te: torch.tensor,
-                   rewards_ac: torch.tensor, next_states: dict, is_dones: torch.tensor):
+    def get_losses(self, states: State, actions_te: torch.tensor, actions_ac: torch.tensor, rewards_te: torch.tensor,
+                   rewards_ac: torch.tensor, next_states: State, is_dones: torch.tensor):
         """
         this function returns all needed losses for train
         Args:
@@ -172,36 +167,25 @@ class Agency:
         Returns: te_agent_loss, ac_agent_loss, provided by self.get_loss_discrete_agent
 
         """
-        n_features = states['s'].shape[-1]
-        hidden_te = states['h_te'].shape[-1]
-        hidden_ac = states['h_ac'].shape[-1]
+
         loc_device = next(self.te_agent.parameters()).device
+        states.to(loc_device)
+        next_states.to(loc_device)
+        obs_tp0, obs_tp0_h_te, obs_tp0_c_te, obs_tp0_h_ac, obs_tp0_c_ac = states.input_for_nn(is_dones=is_dones)
+        obs_tp1, obs_tp1_h_te, obs_tp1_c_te, obs_tp1_h_ac, obs_tp1_c_ac = next_states.input_for_nn(is_dones=is_dones)
 
-        is_dones = is_dones.view(-1).to(loc_device)
-
-        obs_t = states['s'].float().view(-1, 1, n_features)[is_dones.logical_not()].to(loc_device)
-        obs_tp1 = next_states['s'].float().view(-1, 1, n_features)[is_dones.logical_not()].to(loc_device)
-
-        obs_t_h_te = states['h_te'].view(-1, 1, hidden_te)[is_dones.logical_not()].to(loc_device)
-        obs_t_c_te = states['c_te'].view(-1, 1, hidden_te)[is_dones.logical_not()].to(loc_device)
-        obs_tp1_h_te = next_states['h_te'].view(-1, 1, hidden_te)[is_dones.logical_not()].to(loc_device)
-        obs_tp1_c_te = next_states['c_te'].view(-1, 1, hidden_te)[is_dones.logical_not()].to(loc_device)
-
-        obs_t_h_ac = states['h_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()].to(loc_device)
-        obs_t_c_ac = states['c_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()].to(loc_device)
-        obs_tp1_h_ac = next_states['h_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()].to(loc_device)
-        obs_tp1_c_ac = next_states['c_ac'].view(-1, 1, hidden_ac)[is_dones.logical_not()].to(loc_device)
+        is_dones = is_dones.view(-1)
         actions_te = actions_te.long().view(-1)[is_dones.logical_not()].unsqueeze(1).to(loc_device)
         actions_ac = actions_ac.long().view(-1)[is_dones.logical_not()].unsqueeze(1).to(loc_device)
         rewards_te = rewards_te.float().view(-1)[is_dones.logical_not()].to(loc_device)
         rewards_ac = rewards_ac.float().view(-1)[is_dones.logical_not()].to(loc_device)
 
-        te_agent_loss = self.get_loss_discrete_agent(obs_t=obs_t, h_t=obs_t_h_te, c_t=obs_t_c_te,
+        te_agent_loss = self.get_loss_discrete_agent(obs_t=obs_tp0, h_t=obs_tp0_h_te, c_t=obs_tp0_c_te,
                                                      actions=actions_te, rewards=rewards_te,
                                                      obs_tp1=obs_tp1, h_tp1=obs_tp1_h_te, c_tp1=obs_tp1_c_te,
                                                      agent=self.te_agent)
 
-        ac_agent_loss = self.get_loss_discrete_agent(obs_t=obs_t, h_t=obs_t_h_ac, c_t=obs_t_c_ac,
+        ac_agent_loss = self.get_loss_discrete_agent(obs_t=obs_tp0, h_t=obs_tp0_h_ac, c_t=obs_tp0_c_ac,
                                                      actions=actions_ac, rewards=rewards_ac,
                                                      obs_tp1=obs_tp1, h_tp1=obs_tp1_h_ac, c_tp1=obs_tp1_c_ac,
                                                      agent=self.ac_agent)

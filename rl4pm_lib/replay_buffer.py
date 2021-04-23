@@ -29,13 +29,30 @@ class State:
         self.c_ac = transform_hidden(self.c_ac, not_done)
         self.c_te = transform_hidden(self.c_te, not_done)
 
+    def input_for_nn(self, is_dones):
+        not_done = is_dones.view(-1).logical_not()
+        n_features = self.state.shape[-1]
+        hidden_te_shape = self.h_te.shape[-1]
+        hidden_ac_shape = self.h_ac.shape[-1]
+        obs_t = self.state.view(-1, 1, n_features)[not_done]
+        obs_h_te = self.h_te.view(-1, 1, hidden_te_shape)[not_done].view(1, -1, hidden_te_shape)
+        obs_c_te = self.c_te.view(-1, 1, hidden_te_shape)[not_done].view(1, -1, hidden_te_shape)
+        obs_h_ac = self.h_ac.view(-1, 1, hidden_ac_shape)[not_done].view(1, -1, hidden_te_shape)
+        obs_c_ac = self.c_ac.view(-1, 1, hidden_ac_shape)[not_done].view(1, -1, hidden_te_shape)
+        return obs_t, obs_h_te, obs_c_te, obs_h_ac, obs_c_ac
+
     def __len__(self):
         return len(self.state)
 
     def __getitem__(self, item):
         return State(state=self.state[item].unsqueeze(0),
-                     h_ac=self.h_ac[item].unsqueeze(0), h_te=self.h_te[item].unsqueeze(0),
+                     h_ac=self.h_te[item].unsqueeze(0), h_te=self.h_te[item].unsqueeze(0),
                      c_te=self.c_te[item].unsqueeze(0), c_ac=self.c_te[item].unsqueeze(0))
+
+    def __iter__(self):
+        return iter([self.state,
+                     self.h_te, self.c_te,
+                     self.h_ac, self.c_te])
 
     def to(self, device):
         self.state = self.state.to(device=device)
@@ -150,18 +167,19 @@ class ReplayMemory(object):
             obses_tp1_h_te.append(obs_tp1.h_te)
             obses_tp1_c_ac.append(obs_tp1.c_ac)
             obses_tp1_c_te.append(obs_tp1.c_te)
-        obses_tp1 = {'s': _replay_buff_view_state(obses_tp1_s, le, self.traces),
-                     'h_te': _replay_buff_view_state(obses_tp1_h_te, le, self.traces),
-                     'c_te': _replay_buff_view_state(obses_tp1_h_te, le, self.traces),
-                     'h_ac': _replay_buff_view_state(obses_tp1_h_ac, le, self.traces),
-                     'c_ac': _replay_buff_view_state(obses_tp1_h_ac, le, self.traces),
-                     }
-        obses_t = {'s': _replay_buff_view_state(obses_t_s, le, self.traces),
-                   'h_te': _replay_buff_view_state(obses_t_h_te, le, self.traces),
-                   'c_te': _replay_buff_view_state(obses_t_h_te, le, self.traces),
-                   'h_ac': _replay_buff_view_state(obses_t_h_ac, le, self.traces),
-                   'c_ac': _replay_buff_view_state(obses_t_h_ac, le, self.traces),
-                   }
+
+        obses_tp1 = State(state=_replay_buff_view_state(obses_tp1_s, le, self.traces),
+                          h_te=_replay_buff_view_state(obses_tp1_h_te, le, self.traces),
+                          h_ac=_replay_buff_view_state(obses_tp1_h_ac, le, self.traces),
+                          c_te=_replay_buff_view_state(obses_tp1_c_te, le, self.traces),
+                          c_ac=_replay_buff_view_state(obses_tp1_c_ac, le, self.traces)
+                          )
+        obses_t = State(state=_replay_buff_view_state(obses_t_s, le, self.traces),
+                        h_te=_replay_buff_view_state(obses_t_h_te, le, self.traces),
+                        h_ac=_replay_buff_view_state(obses_t_h_ac, le, self.traces),
+                        c_te=_replay_buff_view_state(obses_t_c_te, le, self.traces),
+                        c_ac=_replay_buff_view_state(obses_t_c_ac, le, self.traces)
+                        )
 
         actions_te = _replay_buff_view(actions_te, le, self.traces)
         actions_ac = _replay_buff_view(actions_ac, le, self.traces)
@@ -201,4 +219,3 @@ class ReplayMemory(object):
 
     def is_full(self):
         return len(self._storage) == self._maxsize
-
