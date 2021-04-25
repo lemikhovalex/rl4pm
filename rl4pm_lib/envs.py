@@ -157,7 +157,7 @@ class PMEnv(gym.Env):
 
         pred_act_oh = np.zeros((self.data.shape[0], self.data.shape[-1] - len(self.column_feature)),
                                dtype=int)
-        pred_act_oh[range(pred_act_oh.shape[0]), next_act.long()] = 1
+        pred_act_oh[range(pred_act_oh.shape[0]), next_act.astype(int)] = 1
 
         act_rew = get_ctegorial_reward(true_act_oh=true_act_oh, pred_act_oh=pred_act_oh)
         next_s = self.get_next_input(prev_inp=self.given_state, next_act=next_act, next_te=next_te)
@@ -167,7 +167,7 @@ class PMEnv(gym.Env):
         is_done *= -1
         is_done += 1
         is_done += (self.pred_counter == (self.data.shape[1] - 1))
-        is_done = is_done.bool()
+        is_done = np.array(is_done, dtype=bool)
 
         self.pred_counter += 1
         # do scaling

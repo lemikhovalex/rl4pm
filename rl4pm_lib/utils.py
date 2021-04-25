@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from .replay_buffer import State, Datum
 import matplotlib.pyplot as plt
-from math import floor, ceil
+from math import ceil
 
 
 def play_and_record(agent_te, agent_ac, env, exp_replay,
@@ -15,7 +15,7 @@ def play_and_record(agent_te, agent_ac, env, exp_replay,
     agent_ac.eval()
     inp = env.reset()
     n_traces = inp.shape[0]
-    inp = inp.view(n_traces, 1, -1).float().to(device=process_dvice)
+    inp = torch.as_tensor(inp).view(n_traces, 1, -1).float().to(device=process_dvice)
     is_done = torch.zeros(env.data.shape[0], device=process_dvice).bool()
     h_a = torch.zeros(agent_ac.n_lstm, n_traces, agent_ac.hidden, device=process_dvice)
     c_a = torch.zeros(agent_ac.n_lstm, n_traces, agent_ac.hidden, device=process_dvice)
@@ -24,8 +24,6 @@ def play_and_record(agent_te, agent_ac, env, exp_replay,
 
     agent_te.to(device=process_dvice)
     agent_ac.to(device=process_dvice)
-    if env.device != process_dvice:
-        env.to(device=process_dvice)
 
     episode_te_rew = None
     episode_ac_rew = None
@@ -39,14 +37,19 @@ def play_and_record(agent_te, agent_ac, env, exp_replay,
         next_ac, (h_a, c_a) = agent_ac.sample_action(x=inp, hidden=(h_a, c_a), stoch=stoch)
 
         next_te, (h_t, c_t) = agent_te.sample_action(x=inp, hidden=(h_t, c_t), stoch=stoch)
-        n_inp, (reward_te, reward_ac), is_done, add_inf = env.step((agent_te.act_to_te(next_te), next_ac))
+        n_inp, (reward_te, reward_ac), is_done, add_inf = env.step((agent_te.act_to_te(next_te).cpu().detach().numpy(),
+                                                                    next_ac.cpu().detach().numpy())
+                                                                   )
+        n_inp = torch.as_tensor(n_inp)
         n_inp = n_inp.view(n_traces, 1, -1).float()
 
         state_t_next = State(state=n_inp,
                              h_ac=h_a, c_ac=c_a,
                              h_te=h_t, c_te=c_t)
-        datum = Datum(obs_t=state_t, action_te=next_te, action_ac=next_ac, reward_ac=reward_ac, reward_te=reward_te,
-                      obs_tp1=state_t_next, dones=is_done)
+        datum = Datum(obs_t=state_t, action_te=next_te, action_ac=next_ac, reward_ac=torch.as_tensor(reward_ac),
+                      reward_te=torch.as_tensor(reward_te),
+                      obs_tp1=state_t_next, dones=torch.as_tensor(is_done))
+        # check if it is beginning of trace
         if episode_te_rew is None:
             episode_te_rew = reward_te
         else:
@@ -55,25 +58,18 @@ def play_and_record(agent_te, agent_ac, env, exp_replay,
             episode_ac_rew = reward_ac
         else:
             episode_ac_rew += reward_ac
-        try:
-            n += is_done.logical_not().sum().item()
-        except AttributeError:
-            n += 1 - is_done
+
+        n += np.logical_not(is_done).sum()
 
         if process_dvice != dest_device:
             datum.to(device=dest_device)
 
         exp_replay.push(datum)
         inp = n_inp
+        inp.to(process_dvice)
 
-    try:
-        episode_te_rew = episode_te_rew.sum().item()
-    except AttributeError:
-        pass
-    try:
-        episode_ac_rew = episode_ac_rew.sum().item()
-    except AttributeError:
-        pass
+    episode_te_rew = episode_te_rew.sum()
+    episode_ac_rew = episode_ac_rew.sum()
 
     return episode_te_rew, episode_ac_rew, n
 
@@ -95,7 +91,7 @@ def extract_trace_features(df: pd.DataFrame, trace_id, max_len):
         trace_vals = torch.as_tensor(trace_vals).unsqueeze(0)
     else:
         n_features = df.drop(columns=to_dr).shape[1]
-        trace_vals = torch.zeros(1, max_len, n_features)
+        trace_vals = np.zeros((1, max_len, n_features))
     return trace_vals
 
 
@@ -103,7 +99,7 @@ def extend_env_matrix(env_matrix, df: pd.DataFrame, t_id, max_len):
     if env_matrix is not None:
         trace_vals = extract_trace_features(df, t_id, max_len)
         assert trace_vals.shape[2] == 27
-        env_matrix = torch.cat([env_matrix, trace_vals])
+        env_matrix = np.concatenate([env_matrix, trace_vals])
     else:
         env_matrix = extract_trace_features(df, t_id, max_len)
         assert env_matrix.shape[2] == 27
