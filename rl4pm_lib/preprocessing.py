@@ -1,5 +1,5 @@
 import pandas as pd
-import torch
+import numpy as np
 from sklearn.preprocessing import LabelBinarizer
 
 
@@ -106,9 +106,9 @@ class PaperScaler:
         self.scales['te'] = scale_te(df)
         self.scales['tt'] = scale_tt(df)
 
-    def transform(self, x: torch.tensor, inplace=True):
+    def transform(self, x: np.ndarray, inplace=True):
         if not inplace:
-            out = x.clone()
+            out = np.copy(x)
         else:
             out = x
         for _cf in self.column_features:

@@ -40,15 +40,16 @@ def play_and_record(agent_te, agent_ac, env, exp_replay,
         n_inp, (reward_te, reward_ac), is_done, add_inf = env.step((agent_te.act_to_te(next_te).cpu().detach().numpy(),
                                                                     next_ac.cpu().detach().numpy())
                                                                    )
-        n_inp = torch.as_tensor(n_inp)
-        n_inp = n_inp.view(n_traces, 1, -1).float()
+
+        n_inp = n_inp.reshape(n_traces, 1, -1)
 
         state_t_next = State(state=n_inp,
                              h_ac=h_a, c_ac=c_a,
                              h_te=h_t, c_te=c_t)
-        datum = Datum(obs_t=state_t, action_te=next_te, action_ac=next_ac, reward_ac=torch.as_tensor(reward_ac),
-                      reward_te=torch.as_tensor(reward_te),
-                      obs_tp1=state_t_next, dones=torch.as_tensor(is_done))
+        datum = Datum(obs_t=state_t, action_te=next_te, action_ac=next_ac, reward_ac=reward_ac,
+                      reward_te=reward_te,
+                      obs_tp1=state_t_next, dones=is_done)
+        n_inp = torch.as_tensor(n_inp).float()
         # check if it is beginning of trace
         if episode_te_rew is None:
             episode_te_rew = reward_te
@@ -88,7 +89,7 @@ def extract_trace_features(df: pd.DataFrame, trace_id, max_len):
     if trace_id is not None:
         trace_vals = df[df['trace_id'] == trace_id].drop(columns=to_dr).values
         trace_vals = fill_trace(trace_vals, max_len)
-        trace_vals = torch.as_tensor(trace_vals).unsqueeze(0)
+        trace_vals = np.expand_dims(trace_vals, axis=0)
     else:
         n_features = df.drop(columns=to_dr).shape[1]
         trace_vals = np.zeros((1, max_len, n_features))

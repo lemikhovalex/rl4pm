@@ -1,53 +1,59 @@
 import random
+import numpy as np
 import torch
 
 
-def transform_hidden(x, not_done):
+def transform_hidden(x: np.ndarray, not_done):
     num_layers, batch, hidden_size = x.shape
-    x = x.view(batch, num_layers, hidden_size)
+    x = x.reshape((batch, num_layers, hidden_size))
     x = x[not_done]
     return x
 
 
 class State:
-    def __init__(self, state: torch.tensor,
-                 h_ac: torch.tensor,
-                 c_ac: torch.tensor,
-                 h_te: torch.tensor,
-                 c_te: torch.tensor):
+    def __init__(self, state: np.ndarray,
+                 h_ac: np.ndarray,
+                 c_ac: np.ndarray,
+                 h_te: np.ndarray,
+                 c_te: np.ndarray):
         self.state = state
         self.h_ac = h_ac
         self.c_ac = c_ac
         self.h_te = h_te
         self.c_te = c_te
 
-    def filter(self, is_done):
-        not_done = is_done.logical_not()
+    def filter(self, is_done: np.ndarray):
+        not_done = np.logical_not(is_done)
         self.state = self.state[not_done]
         self.h_ac = transform_hidden(self.h_ac, not_done)
         self.h_te = transform_hidden(self.h_te, not_done)
         self.c_ac = transform_hidden(self.c_ac, not_done)
         self.c_te = transform_hidden(self.c_te, not_done)
 
-    def input_for_nn(self, is_dones):
-        not_done = is_dones.view(-1).logical_not()
+    def input_for_nn(self, is_dones: np.ndarray, device):
+        not_done = np.logical_not(is_dones).reshape(-1)
         n_features = self.state.shape[-1]
         hidden_te_shape = self.h_te.shape[-1]
         hidden_ac_shape = self.h_ac.shape[-1]
-        obs_t = self.state.view(-1, 1, n_features)[not_done]
-        obs_h_te = self.h_te.view(-1, 1, hidden_te_shape)[not_done].view(1, -1, hidden_te_shape)
-        obs_c_te = self.c_te.view(-1, 1, hidden_te_shape)[not_done].view(1, -1, hidden_te_shape)
-        obs_h_ac = self.h_ac.view(-1, 1, hidden_ac_shape)[not_done].view(1, -1, hidden_te_shape)
-        obs_c_ac = self.c_ac.view(-1, 1, hidden_ac_shape)[not_done].view(1, -1, hidden_te_shape)
-        return obs_t, obs_h_te, obs_c_te, obs_h_ac, obs_c_ac
+        obs_t = self.state.reshape((-1, 1, n_features))[not_done]
+        obs_h_te = self.h_te.reshape((-1, 1, hidden_te_shape))[not_done].reshape((1, -1, hidden_te_shape))
+        obs_c_te = self.c_te.reshape((-1, 1, hidden_te_shape))[not_done].reshape((1, -1, hidden_te_shape))
+        obs_h_ac = self.h_ac.reshape((-1, 1, hidden_ac_shape))[not_done].reshape((1, -1, hidden_te_shape))
+        obs_c_ac = self.c_ac.reshape((-1, 1, hidden_ac_shape))[not_done].reshape((1, -1, hidden_te_shape))
+        return torch.as_tensor(obs_t, device=device, dtype=torch.float), \
+               torch.as_tensor(obs_h_te, device=device, dtype=torch.float), \
+               torch.as_tensor(obs_c_te, device=device, dtype=torch.float), \
+               torch.as_tensor(obs_h_ac, device=device, dtype=torch.float), \
+               torch.as_tensor(obs_c_ac, device=device, dtype=torch.float)
 
     def __len__(self):
         return len(self.state)
 
     def __getitem__(self, item):
-        return State(state=self.state[item].unsqueeze(0),
-                     h_ac=self.h_te[item].unsqueeze(0), h_te=self.h_te[item].unsqueeze(0),
-                     c_te=self.c_te[item].unsqueeze(0), c_ac=self.c_te[item].unsqueeze(0))
+        raise NotImplemented
+        # return State(state=self.state[item].unsqueeze(0),
+        #              h_ac=self.h_te[item].unsqueeze(0), h_te=self.h_te[item].unsqueeze(0),
+        #              c_te=self.c_te[item].unsqueeze(0), c_ac=self.c_te[item].unsqueeze(0))
 
     def __iter__(self):
         return iter([self.state,
@@ -55,21 +61,22 @@ class State:
                      self.h_ac, self.c_te])
 
     def to(self, device):
-        self.state = self.state.to(device=device)
-        self.h_ac = self.h_ac.to(device=device)
-        self.c_ac = self.c_ac.to(device=device)
-        self.h_te = self.h_te.to(device=device)
-        self.c_te = self.c_te.to(device=device)
+        raise NotImplemented
+        # self.state = self.state.to(device=device)
+        # self.h_ac = self.h_ac.to(device=device)
+        # self.c_ac = self.c_ac.to(device=device)
+        # self.h_te = self.h_te.to(device=device)
+        # self.c_te = self.c_te.to(device=device)
 
 
 class Datum(object):
     def __init__(self, obs_t: State,
-                 action_te: torch.tensor,
-                 action_ac: torch.tensor,
-                 reward_te: torch.tensor,
-                 reward_ac: torch.tensor,
+                 action_te: np.ndarray,
+                 action_ac: np.ndarray,
+                 reward_te: np.ndarray,
+                 reward_ac: np.ndarray,
                  obs_tp1: State,
-                 dones: torch.tensor):
+                 dones: np.ndarray):
         self.obs_t = obs_t
         self.action_te = action_te
         self.action_ac = action_ac
@@ -87,30 +94,31 @@ class Datum(object):
                      self.dones])
 
     def filter(self):
-        self.action_te = self.action_te[self.dones.logical_not()]
-        self.action_ac = self.action_ac[self.dones.logical_not()]
-        self.reward_te = self.reward_te[self.dones.logical_not()]
-        self.reward_ac = self.reward_ac[self.dones.logical_not()]
+        self.action_te = self.action_te[np.logical_not(self.dones)]
+        self.action_ac = self.action_ac[np.logical_not(self.dones)]
+        self.reward_te = self.reward_te[np.logical_not(self.dones)]
+        self.reward_ac = self.reward_ac[np.logical_not(self.dones)]
         self.obs_t.filter(self.dones)
         self.obs_tp1.filter(self.dones)
-        self.dones = self.dones[self.dones.logical_not()]
+        self.dones = self.dones[np.logical_not(self.dones)]
 
     def to(self, device):
-        self.obs_t.to(device=device)
-        self.action_te.to(device=device)
-        self.action_ac.to(device=device)
-        self.reward_te.to(device=device)
-        self.reward_ac.to(device=device)
-        self.obs_tp1.to(device=device)
-        self.dones.to(device=device)
+        raise NotImplemented
+        # self.obs_t.to(device=device)
+        # self.action_te.to(device=device)
+        # self.action_ac.to(device=device)
+        # self.reward_te.to(device=device)
+        # self.reward_ac.to(device=device)
+        # self.obs_tp1.to(device=device)
+        # self.dones.to(device=device)
 
 
 def _replay_buff_view_state(x, le, n_trails):
-    return torch.cat(x).view((le, n_trails, -1))
+    return np.concatenate(x).reshape((le, n_trails, -1))
 
 
 def _replay_buff_view(x, le, n_trails):
-    return torch.cat(x).view((le, n_trails, -1))
+    return np.concatenate(x).reshape((le, n_trails, -1))
 
 
 class ReplayMemory(object):
@@ -149,8 +157,8 @@ class ReplayMemory(object):
             # inp, next_te, next_ac, reward_te, reward_ac, n_inp, is_done
             obs_t, act_te, act_ac, rew_te, rew_ac, obs_tp1, done = datum
             # print(f'\tact_te.shape={act_te.shape}')
-            actions_te.append(torch.as_tensor(act_te))
-            actions_ac.append(torch.as_tensor(act_ac))
+            actions_te.append(act_te)
+            actions_ac.append(act_ac)
             rewards_te.append(rew_te)
             rewards_ac.append(rew_ac)
             dones.append(done)

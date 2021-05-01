@@ -170,16 +170,18 @@ class Agency:
         """
 
         loc_device = next(self.te_agent.parameters()).device
-        states.to(loc_device)
-        next_states.to(loc_device)
-        obs_tp0, obs_tp0_h_te, obs_tp0_c_te, obs_tp0_h_ac, obs_tp0_c_ac = states.input_for_nn(is_dones=is_dones)
-        obs_tp1, obs_tp1_h_te, obs_tp1_c_te, obs_tp1_h_ac, obs_tp1_c_ac = next_states.input_for_nn(is_dones=is_dones)
+        # states.to(loc_device)
+        # next_states.to(loc_device)
+        obs_tp0, obs_tp0_h_te, obs_tp0_c_te, obs_tp0_h_ac, obs_tp0_c_ac = states.input_for_nn(is_dones=is_dones,
+                                                                                              device=loc_device)
+        obs_tp1, obs_tp1_h_te, obs_tp1_c_te, obs_tp1_h_ac, obs_tp1_c_ac = next_states.input_for_nn(is_dones=is_dones,
+                                                                                                   device=loc_device)
 
-        is_dones = is_dones.view(-1)
-        actions_te = actions_te.long().view(-1)[is_dones.logical_not()].unsqueeze(1).to(loc_device)
-        actions_ac = actions_ac.long().view(-1)[is_dones.logical_not()].unsqueeze(1).to(loc_device)
-        rewards_te = rewards_te.float().view(-1)[is_dones.logical_not()].to(loc_device)
-        rewards_ac = rewards_ac.float().view(-1)[is_dones.logical_not()].to(loc_device)
+        is_dones = torch.as_tensor(is_dones, device=loc_device).view(-1)
+        actions_te = torch.as_tensor(actions_te, device=loc_device).long().view(-1)[is_dones.logical_not()].unsqueeze(1)
+        actions_ac = torch.as_tensor(actions_ac, device=loc_device).long().view(-1)[is_dones.logical_not()].unsqueeze(1)
+        rewards_te = torch.as_tensor(rewards_te, device=loc_device).float().view(-1)[is_dones.logical_not()]
+        rewards_ac = torch.as_tensor(rewards_ac, device=loc_device).float().view(-1)[is_dones.logical_not()]
 
         te_agent_loss = self.get_loss_discrete_agent(obs_t=obs_tp0, h_t=obs_tp0_h_te, c_t=obs_tp0_c_te,
                                                      actions=actions_te, rewards=rewards_te,
