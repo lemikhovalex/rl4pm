@@ -55,36 +55,40 @@ def scale_te(df: pd.DataFrame):
     return max_te
 
 
+class AllInOnePrepro:
+    def __init__(self):
+        self.df_prepro = DfPreprocesser()
+        self.paper_prepro = PaperScaler()
+
+
 class DfPreprocesser:
     def __init__(self):
         self.core_oh = LabelBinarizer()
-        self.tw = None
-        self.te = None
-        self.tt = None
         self.n_classes = 0
 
     def fit(self, df: pd.DataFrame):
         assert 'activity' in df.columns.values
         self.core_oh.fit(df['activity'])
 
-        self.tw = get_t_w(df)
-        self.te = get_t_e(df)
-        self.tt = get_t_t(df)
-
     def transform(self, df: pd.DataFrame, inplace=False):
         if not inplace:
             out = df.copy()
         else:
             out = df
+
+        tw = get_t_w(df)
+        te = get_t_e(df)
+        tt = get_t_t(df)
+
         oh_np = self.core_oh.transform(out['activity'])
         oh = pd.DataFrame(oh_np, columns=self.core_oh.classes_)
         out = pd.concat([df, oh], axis=1)
         out.drop(columns=['activity', 'timestamp'], inplace=True)
 
         self.n_classes = len(set(df['activity']))
-        time_related_df = pd.DataFrame({'tt': self.tt,
-                                        'te': self.te,
-                                        'tw': self.tw
+        time_related_df = pd.DataFrame({'tt': tt,
+                                        'te': te,
+                                        'tw': tw
                                         })
         out = pd.concat([time_related_df, out], axis=1)
         return out
