@@ -115,6 +115,11 @@ class PaperScaler:
             out = x.clone()
         else:
             out = x
-        for _cf in self.column_features:
-            out[:, :, self.column_features[_cf]] = out[:, :, self.column_features[_cf]] / self.scales[_cf]
+
+        if len(x.shape) == 3:
+            for _cf in self.column_features:
+                out[:, :, self.column_features[_cf]] = out[:, :, self.column_features[_cf]] / self.scales[_cf]
+        if type(out) == pd.DataFrame:
+            for _cf in self.column_features:
+                out[_cf] = out[_cf] / self.scales[_cf]
         return out
