@@ -38,13 +38,23 @@ class NetAgent(torch.nn.Module):
         relu(torch.nn.ReLU): activation function
         fc(torch.nn.Linear): fully connected layer
     """
-    def __init__(self, input_size, hidden_layer, n_lstm, out_shape):
+    def __init__(self, input_size, hidden_layer, n_lstm, out_shape, rl=True, batch_first=True):
         super(NetAgent, self).__init__()
-        self.lstm = torch.nn.LSTM(input_size=input_size, hidden_size=hidden_layer, batch_first=True, num_layers=n_lstm)
+        self.lstm = torch.nn.LSTM(input_size=input_size, hidden_size=hidden_layer,
+                                  batch_first=batch_first, num_layers=n_lstm)
         self.relu = torch.nn.ReLU()
         self.fc = torch.nn.Linear(hidden_layer, out_shape)
+        self.out_shape = out_shape
+        self.rl = rl
+        self.n_lstm = n_lstm
+        self.hidden = hidden_layer
 
     def forward(self, x, h):
+        if h is None:
+            h_te = torch.zeros((self.n_lstm, x.shape[0], self.hidden), requires_grad=True)
+            c_te = torch.zeros((self.n_lstm, x.shape[0], self.hidden), requires_grad=True)
+            h = (h_te, c_te)
+            x, h = self.lstm(x, h)
         x, h = self.lstm(x, h)
         x = self.relu(x)
         x = self.fc(x)
@@ -72,10 +82,7 @@ class BaseAgent(torch.nn.Module):
         self.hidden = hidden_layer
 
     def forward(self, x, hidden=None):
-        if hidden is None:
-            h_te = torch.zeros((self.n_lstm, x.shape[0], self.hidden), requires_grad=True)
-            c_te = torch.zeros((self.n_lstm, x.shape[0], self.hidden), requires_grad=True)
-            hidden = (h_te, c_te)
+
         return self.net(x, hidden)
 
     def sample_action(self, x, hidden=None, stoch=False):
