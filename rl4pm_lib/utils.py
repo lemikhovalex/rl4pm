@@ -78,9 +78,9 @@ def play_and_record(agent_te, agent_ac, env, exp_replay,
     return episode_te_rew, episode_ac_rew, n
 
 
-def fill_trace(trace_np_matrix, max_len):
+def fill_trace(trace_np_matrix, max_len, fill_value=0):
     need_pad = max_len - trace_np_matrix.shape[0]
-    pad = np.zeros((need_pad, trace_np_matrix.shape[1]))
+    pad = np.ones((need_pad, trace_np_matrix.shape[1])) * fill_value
     return np.concatenate((trace_np_matrix, pad))
 
 
