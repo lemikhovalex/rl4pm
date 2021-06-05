@@ -4,6 +4,7 @@ import pandas as pd
 from .replay_buffer import State, Datum
 import matplotlib.pyplot as plt
 from math import floor, ceil
+from sklearn.metrics import f1_score
 
 
 def play_and_record(agent_te, agent_ac, env, exp_replay,
@@ -172,3 +173,61 @@ def split_list_to_buckets(array, n):
         fp = lp
         lp += n
     return out
+
+
+def get_mae_days(true, pred, scaler):
+    out = torch.abs(true - pred)
+    return out.mean().item() * scaler.scales['te'] / 3600. / 24.
+
+
+def get_accuracy(true, pred):
+    correct = (pred.argmax(axis=1) == true).sum().item()
+    total = true.shape[0]
+    return correct / total
+
+
+def get_log_loss(true, pred):
+    loss = torch.nn.CrossEntropyLoss()
+    output = loss(pred, true).item()
+    return output
+
+
+def get_f1_score(true, pred):
+    pred = pred.argmax(axis=1).numpy()
+    return f1_score(true.numpy(), pred, average='weighted')
+
+
+def plot_learning(test_acc, train_acc,
+                  test_mae, train_mae,
+                  test_f1, train_f1,
+                  test_ce, train_ce,
+                  epoches
+                  ):
+    fig, axs = plt.subplots(2, 2, figsize=(16, 8))
+    fig.tight_layout(pad=5)
+    axs[0, 0].plot(epoches, test_acc, label='test')
+    axs[0, 0].plot(epoches, train_acc, label='train')
+    axs[0, 0].set_title('Accuracy')
+    axs[0, 0].set_xlabel('epoches')
+
+    axs[0, 1].plot(epoches, test_mae, label='test')
+    axs[0, 1].plot(epoches, train_mae, label='train')
+    axs[0, 1].set_title('MAE')
+    axs[0, 1].set_xlabel('epoches')
+    axs[0, 1].set_ylabel('days')
+
+    axs[1, 0].plot(epoches, test_f1, label='test')
+    axs[1, 0].plot(epoches, train_f1, label='train')
+    axs[1, 0].set_title('F1')
+    axs[1, 0].set_xlabel('epoches')
+
+    axs[1, 1].plot(epoches, test_ce, label='test')
+    axs[1, 1].plot(epoches, train_ce, label='train')
+    axs[1, 1].set_title('Cross Entropy Loss')
+    axs[1, 1].set_xlabel('epoches')
+
+    axs[0, 0].legend()
+    axs[0, 1].legend()
+    axs[1, 0].legend()
+    axs[1, 1].legend()
+    plt.show()
