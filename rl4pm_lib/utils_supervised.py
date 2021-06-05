@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 
 
+
 def make_window_features_for_trace(df, win_len):
     _win_len = win_len - 1
     out = df[_win_len:].copy()
