@@ -13,7 +13,8 @@ def get_t_w(df: pd.DataFrame):
 def get_t_e(df: pd.DataFrame):
     cp = df[['timestamp', 'trace_id']].copy()
     cp['te'] = cp['timestamp'].diff()
-    cp['te'] = cp['te'].fillna(0.)
+    start_of_trace = (cp['trace_id'].diff() != 0.)
+    cp.loc[start_of_trace, 'te'] = 0.
     cp['te'] = cp['te'].apply(lambda x: x.total_seconds() if type(x) != float else x)
     return cp['te'].values
 
