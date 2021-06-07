@@ -11,10 +11,11 @@ def get_t_w(df: pd.DataFrame):
 
 
 def get_t_e(df: pd.DataFrame):
-    te = df['timestamp'].copy().diff()
-    tr_diff = df['trace_id'].diff().fillna(1)
-    te[tr_diff != 0] = 0.
-    return te.values * 1e-9
+    cp = df[['timestamp', 'trace_id']].copy()
+    cp['te'] = cp['timestamp'].diff()
+    cp['te'] = cp['te'].fillna(0.)
+    cp['te'] = cp['te'].apply(lambda x: x.total_seconds() if type(x) != float else x)
+    return cp['te'].values
 
 
 def get_t_t(df: pd.DataFrame):
@@ -22,7 +23,7 @@ def get_t_t(df: pd.DataFrame):
     out = df.copy()[['timestamp', 'trace_id']]
     t_ts = {}
     for t in traces:
-        t_ts[t] = df['timestamp'][df['trace_id'] == t].min()
+        t_ts[t] = out['timestamp'][out['trace_id'] == t].min()
     out['tt'] = out.apply(lambda x: (x['timestamp'] - t_ts[x['trace_id']]).total_seconds(), axis=1)
     return out['tt'].values
 
@@ -76,16 +77,18 @@ class DfPreprocesser:
         else:
             out = df
 
-        tw = get_t_w(df)
-        te = get_t_e(df)
-        tt = get_t_t(df)
+        self.n_classes = len(set(out['activity']))
+        tw = get_t_w(out)
+        te = get_t_e(out)
+        tt = get_t_t(out)
 
         oh_np = self.core_oh.transform(out['activity'])
+
         oh = pd.DataFrame(oh_np, columns=self.core_oh.classes_)
-        out = pd.concat([df, oh], axis=1)
+        out = pd.concat([out, oh], axis=1)
+
         out.drop(columns=['activity', 'timestamp'], inplace=True)
 
-        self.n_classes = len(set(df['activity']))
         time_related_df = pd.DataFrame({'tt': tt,
                                         'te': te,
                                         'tw': tw
