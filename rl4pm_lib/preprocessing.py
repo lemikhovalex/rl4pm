@@ -98,14 +98,56 @@ class DfPreprocesser:
         return out
 
 
+class PaperScalerPd:
+    def __init__(self, column_features=None, drop_trace=True):
+        if column_features is None:
+            column_features = {'te': 0, 'tt': 1, 'tw': 2}
+        self.column_features = column_features
+        self.scales = {'te': 1., 'tt': 1., 'tw': 2.}
+        self.cols_to_scale = {}
+        self.drop_trace = drop_trace
+
+    def fit(self, df: pd.DataFrame, y=None):
+        cols = df.columns.values
+        assert 'trace_id' in cols
+
+        self.scales['tw'] = scale_tw(df)
+        self.scales['te'] = scale_te(df)
+        self.scales['tt'] = scale_tt(df)
+
+        for _cf in self.column_features:
+            self.cols_to_scale[_cf] = []
+
+        for _cf in self.column_features:
+            for _col in df.columns.values:
+                if _col[:len(_cf)] == _cf:
+                    self.cols_to_scale[_cf].append(_col)
+
+        return self
+
+    def transform(self, x: pd.DataFrame, inplace=False):
+        if not inplace:
+            out = x.copy()
+        else:
+            out = x
+        if self.drop_trace:
+            if 'trace_id' in out.columns.values:
+                out.drop(columns=['trace_id'], inplace=True)
+
+        for _cf in self.column_features:
+            for _col in self.cols_to_scale[_cf]:
+                out[_col] = out[_col] / self.scales[_cf]
+        return out
+
+
 class PaperScaler:
     def __init__(self, column_features=None):
         if column_features is None:
             column_features = {'te': 0, 'tt': 1, 'tw': 2}
         self.column_features = column_features
-        self.scales = {'te': 1., 'tt': 1., 'tw': 2.}
+        self.scales = {'te': 1., 'tt': 1., 'tw': 1.}
 
-    def fit(self, df: pd.DataFrame):
+    def fit(self, df: pd.DataFrame, y=None):
         cols = df.columns.values
         assert 'trace_id' in cols
         assert 'te' in cols
@@ -113,6 +155,8 @@ class PaperScaler:
         self.scales['tw'] = scale_tw(df)
         self.scales['te'] = scale_te(df)
         self.scales['tt'] = scale_tt(df)
+
+        return self
 
     def transform(self, x: torch.tensor, inplace=True):
         if not inplace:
@@ -127,7 +171,6 @@ class PaperScaler:
             for _cf in self.column_features:
                 out[_cf] = out[_cf] / self.scales[_cf]
         return out
-
     
 def is_there_cycle(x) -> bool:
     out = None
