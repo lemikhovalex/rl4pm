@@ -127,3 +127,33 @@ class PaperScaler:
             for _cf in self.column_features:
                 out[_cf] = out[_cf] / self.scales[_cf]
         return out
+
+    
+def is_there_cycle(x) -> bool:
+    out = None
+    if len(x) < 3:
+        out = False
+    else:
+        out = False
+        _i = 0
+        l = len(x)
+        while (not out) and (_i + 2 <= l - 1):
+            if (x[_i] == x[_i+2]) or (x[_i] == x[_i+1]):
+                out = True
+            _i += 1
+    return out
+
+
+def number_of_cycles(x) -> int:
+    out = 0
+    if len(x) < 3:
+        out = 0
+    else:
+        out = 0
+        _i = 0
+        l = len(x)
+        while (_i + 2 <= l - 1):
+            if (x[_i] == x[_i+2]) or (x[_i] == x[_i+1]):
+                out += 1
+            _i += 1
+    return out
