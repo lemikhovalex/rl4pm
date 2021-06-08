@@ -88,7 +88,7 @@ class DfPreprocesser:
         oh = pd.DataFrame(oh_np, columns=self.core_oh.classes_)
         out = pd.concat([out, oh], axis=1)
 
-        out.drop(columns=['activity', 'timestamp'], inplace=True)
+        out.drop(columns=['activity'], inplace=True)
 
         time_related_df = pd.DataFrame({'tt': tt,
                                         'te': te,
@@ -99,13 +99,13 @@ class DfPreprocesser:
 
 
 class PaperScalerPd:
-    def __init__(self, column_features=None, drop_trace=True):
+    def __init__(self, column_features=None, drop_useless=True):
         if column_features is None:
             column_features = {'te': 0, 'tt': 1, 'tw': 2}
         self.column_features = column_features
         self.scales = {'te': 1., 'tt': 1., 'tw': 2.}
         self.cols_to_scale = {}
-        self.drop_trace = drop_trace
+        self.drop_useless = drop_useless
 
     def fit(self, df: pd.DataFrame, y=None):
         cols = df.columns.values
@@ -130,9 +130,11 @@ class PaperScalerPd:
             out = x.copy()
         else:
             out = x
-        if self.drop_trace:
+        if self.drop_useless:
             if 'trace_id' in out.columns.values:
                 out.drop(columns=['trace_id'], inplace=True)
+            if 'timestamp' in out.columns.values:
+                out.drop(columns=['timestamp'], inplace=True)
 
         for _cf in self.column_features:
             for _col in self.cols_to_scale[_cf]:

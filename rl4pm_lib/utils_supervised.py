@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 
 
-
 def make_window_features_for_trace(df, win_len):
     _win_len = win_len - 1
     out = df[_win_len:].copy()
@@ -27,7 +26,11 @@ def make_window_features(df, win_len):
     tes = []
     for _i, trace in enumerate(traces):
         _df = df[df['trace_id'] == trace]
-        outs.append(make_window_features_for_trace(_df, win_len)[:-1])  # one must left 4 prediction
-        labels.append(_df.drop(columns=['te', 'tt', 'tw', 'trace_id']).values.argmax(axis=1)[win_len:])
+        n_gram = make_window_features_for_trace(_df, win_len)[:-1]
+        n_gram.drop(columns=[f'timestamp__{_w + 1}' for _w in range(win_len - 1)], inplace=True)
+        n_gram.drop(columns=[f'trace_id__{_w + 1}' for _w in range(win_len - 1)], inplace=True)
+        outs.append(n_gram)  # one must left 4 prediction
+        _df_activity = _df.drop(columns=['te', 'tt', 'tw', 'trace_id', 'timestamp'])
+        labels.append(_df_activity.values.argmax(axis=1)[win_len:])
         tes.append(_df['te'].values[win_len:])
     return pd.concat(outs, axis=0), np.concatenate(labels), np.concatenate(tes)
