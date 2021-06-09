@@ -71,6 +71,7 @@ class DfPreprocesser:
     def fit(self, df: pd.DataFrame):
         assert 'activity' in df.columns.values
         self.core_oh.fit(df['activity'])
+        self.n_classes = len(set(df['activity']))
 
     def transform(self, df: pd.DataFrame, inplace=False):
         if not inplace:
@@ -78,7 +79,6 @@ class DfPreprocesser:
         else:
             out = df
 
-        self.n_classes = len(set(out['activity']))
         tw = get_t_w(out)
         te = get_t_e(out)
         tt = get_t_t(out)
