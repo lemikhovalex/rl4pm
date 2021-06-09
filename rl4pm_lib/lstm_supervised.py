@@ -10,7 +10,12 @@ class ProcessesDataset(Dataset):
     def __init__(self, df, win_len):
         self.win_len = win_len
         self.df_win, self.labels, self.tes = make_window_features(df, win_len)
-        self.df_win.drop(columns=[f'trace_id__{_w + 1}' for _w in range(win_len - 1)], inplace=True)
+        for _w in range(win_len - 1):
+            s_t_d = f'trace_id__{_w + 1}'
+            if s_t_d in self.df_win.columns:
+                self.df_win.drop(columns=[s_t_d], inplace=True)
+        if 'timestamp' in self.df_win.columns:
+            self.df_win.drop(columns=['timestamp'], inplace=True)
         self.labels = pd.DataFrame({'trace_id': self.df_win['trace_id'],
                                     'label': self.labels
                                     }
