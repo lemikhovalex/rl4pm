@@ -128,12 +128,14 @@ class Agency:
         qs, _ = agent(x=obs_t, hidden=(h_t, c_t))
         qs = qs.view(max_len, n_trails, -1)
         predicted_q_values = torch.gather(input=qs, index=actions.unsqueeze(2), dim=2).view(-1)
-
+        # print(f'Agency.get_loss_discrete:: predicted_q_values.shape = {predicted_q_values.shape}')
         with torch.no_grad():
             qs_next, _ = agent(x=obs_tp1, hidden=(h_tp1, c_tp1))
             qs_next = qs_next.view(max_len, n_trails, -1)
             best_actions_by_target, _ = target.sample_action(x=obs_tp1, hidden=(h_tp1, c_tp1), stoch=True)
             best_actions_by_target = best_actions_by_target.long().view(-1).unsqueeze(1)
+
+        # print(f'Agency.get_loss_discrete:: qs_next.shape = {qs_next.shape}')
         predicted_next_q_values = torch.gather(input=qs_next, index=best_actions_by_target.unsqueeze(2), dim=2).view(-1)
         q_reference = rewards + self.discount_factor * predicted_next_q_values
 
@@ -180,16 +182,17 @@ class Agency:
         actions_ac = actions_ac.long().view(-1)[is_dones.logical_not()].unsqueeze(1).to(loc_device)
         rewards_te = rewards_te.float().view(-1)[is_dones.logical_not()].to(loc_device)
         rewards_ac = rewards_ac.float().view(-1)[is_dones.logical_not()].to(loc_device)
-
+        # print('te losses')
         te_agent_loss = self.get_loss_discrete_agent(obs_t=obs_tp0, h_t=obs_tp0_h_te, c_t=obs_tp0_c_te,
                                                      actions=actions_te, rewards=rewards_te,
                                                      obs_tp1=obs_tp1, h_tp1=obs_tp1_h_te, c_tp1=obs_tp1_c_te,
                                                      agent=self.te_agent, target=self.te_agent_targ)
 
+        # print('ac losses')
         ac_agent_loss = self.get_loss_discrete_agent(obs_t=obs_tp0, h_t=obs_tp0_h_ac, c_t=obs_tp0_c_ac,
                                                      actions=actions_ac, rewards=rewards_ac,
                                                      obs_tp1=obs_tp1, h_tp1=obs_tp1_h_ac, c_tp1=obs_tp1_c_ac,
-                                                     agent=self.ac_agent, target=self.te_agent_targ)
+                                                     agent=self.ac_agent, target=self.ac_agent_targ)
         return te_agent_loss, ac_agent_loss
 
     def to(self, device: torch.device):
